@@ -1,0 +1,34 @@
+| 座位 | 专属链接（相对路径，自动适配任何托管域名） | 口令 |
+| --- | --- | --- |
+| 01 | gate.html?seat=01 | KSWB |
+| 02 | gate.html?seat=02 | FPKJ |
+| 03 | gate.html?seat=03 | A7HC |
+| 04 | gate.html?seat=04 | LKAF |
+| 05 | gate.html?seat=05 | N4D4 |
+| 06 | gate.html?seat=06 | 24TL |
+| 07 | gate.html?seat=07 | A43W |
+| 08 | gate.html?seat=08 | SC6F |
+| 09 | gate.html?seat=09 | J822 |
+| 10 | gate.html?seat=10 | ZLSM |
+| 11 | gate.html?seat=11 | J82S |
+| 12 | gate.html?seat=12 | LDD2 |
+| 13 | gate.html?seat=13 | TGNT |
+| 14 | gate.html?seat=14 | XXWS |
+| 15 | gate.html?seat=15 | PTX9 |
+| 16 | gate.html?seat=16 | 2XEB |
+| 17 | gate.html?seat=17 | VABG |
+| 18 | gate.html?seat=18 | Z5JZ |
+| 19 | gate.html?seat=19 | WPWH |
+| 20 | gate.html?seat=20 | 9YYJ |
+| 21 | gate.html?seat=21 | R87J |
+| 22 | gate.html?seat=22 | NF2G |
+| 23 | gate.html?seat=23 | MTQ3 |
+| 24 | gate.html?seat=24 | MA9Q |
+| 25 | gate.html?seat=25 | TYCZ |
+| 26 | gate.html?seat=26 | H9TP |
+| 27 | gate.html?seat=27 | XT85 |
+| 28 | gate.html?seat=28 | 2X3E |
+| 29 | gate.html?seat=29 | GN2W |
+| 30 | gate.html?seat=30 | CG7G |
+
+> 说明：上方「专属链接」为相对路径，部署到 GitHub Pages 后自动解析为 `https://<你的用户名>.github.io/gate.html?seat=XX`。座位数据按 localStorage 隔离，口令即钥匙，首次打开输口令绑定、同机免密、换机重输。

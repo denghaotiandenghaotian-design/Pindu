@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>少儿英语自然拼读学习系统</title>
+<meta name="description" content="面向 5–12 岁儿童的英语自然拼读学习系统：考点库、智能刷题、错题回顾、复习计划、思维导图、模拟考试、背诵打卡、规则讲解、阅读、微课导入、成长打卡，开箱即用。" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&family=Baloo+2:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="app">
+  <!-- 侧边导航 -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">🔤</div>
+      <div>
+        <div class="t1">自然拼读乐园</div>
+        <div class="t2">Phonics Fun · 5–12岁</div>
+      </div>
+    </div>
+    <div class="nav-group">总览</div>
+    <button class="nav-item active" data-nav="home"><span class="ico">🏠</span> 学习首页</button>
+    <div class="nav-group">核心学习模块</div>
+    <button class="nav-item" data-nav="library"><span class="ico">📚</span> 考点库管理</button>
+    <button class="nav-item" data-nav="practice"><span class="ico">✏️</span> 智能刷题</button>
+    <button class="nav-item" data-nav="wrong"><span class="ico">🔁</span> 错题回顾</button>
+    <button class="nav-item" data-nav="plan"><span class="ico">🗓️</span> 复习计划</button>
+    <button class="nav-item" data-nav="mindmap"><span class="ico">🧠</span> 思维导图</button>
+    <button class="nav-item" data-nav="exam"><span class="ico">📝</span> 模拟考试</button>
+    <button class="nav-item" data-nav="recite"><span class="ico">🎤</span> 背诵打卡</button>
+    <button class="nav-item" data-nav="rule"><span class="ico">💡</span> 规则说明</button>
+    <button class="nav-item" data-nav="quiz"><span class="ico">✅</span> 测试题</button>
+    <button class="nav-item" data-nav="reading"><span class="ico">📖</span> 文章阅读题</button>
+    <button class="nav-item" data-nav="lecture"><span class="ico">👩‍🏫</span> 名师讲课</button>
+    <button class="nav-item" data-nav="checkin"><span class="ico">🌟</span> 打卡学习</button>
+  </aside>
+
+  <!-- 主区 -->
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <div class="page-title" id="pageTitle">学习首页</div>
+        <div class="page-sub" id="pageSub">欢迎来到自然拼读乐园！</div>
+      </div>
+      <div class="nick-box">
+        <div class="nick-avatar" id="nickAvatar">🐯</div>
+        <div>
+          <div class="seat-badge" id="seatBadge" style="display:none"></div>
+          <div class="nick-name" id="nickName">小勇士</div>
+          <button class="nick-edit" id="nickEdit">修改昵称</button>
+        </div>
+      </div>
+    </header>
+    <main class="content" id="content"><!-- 由 app.js 渲染 --></main>
+  </div>
+</div>
+
+<!-- 底部导航（移动端） -->
+<nav class="bottom-nav" id="bottomNav">
+  <button class="bn-item active" data-nav="home"><span class="ico">🏠</span>首页</button>
+  <button class="bn-item" data-nav="practice"><span class="ico">✏️</span>刷题</button>
+  <button class="bn-item" data-nav="wrong"><span class="ico">🔁</span>错题</button>
+  <button class="bn-item" data-nav="recite"><span class="ico">🎤</span>背诵</button>
+  <button class="bn-item" data-nav="checkin"><span class="ico">🌟</span>打卡</button>
+</nav>
+
+<!-- 弹窗 -->
+<div class="modal-mask" id="modalMask">
+  <div class="modal" id="modalBox"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="seats.js"></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

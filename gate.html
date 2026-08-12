@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>座位入口 · 少儿英语自然拼读</title>
+<link rel="stylesheet" href="style.css" />
+<style>
+  html,body{min-height:100vh;background:var(--bg);}
+  .gate-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:18px;}
+  .gate-card{max-width:460px;width:100%;margin:0 auto;background:var(--surface);border-radius:var(--r-lg,22px);padding:32px 26px 28px;box-shadow:var(--sh-lg);border-top:5px solid var(--c-primary);text-align:center;}
+  .gate-head{font-size:26px;font-weight:900;color:var(--ink);margin-bottom:6px;}
+  .gate-sub{font-size:14.5px;color:var(--ink-2);font-weight:700;line-height:1.6;margin-bottom:22px;}
+  .gate-logo{font-size:64px;margin-bottom:10px;line-height:1;}
+  .gate-field{text-align:left;margin-bottom:14px;}
+  .gate-field label{display:block;font-weight:800;font-size:13.5px;color:var(--ink-2);margin-bottom:6px;}
+  .gate-field input{width:100%;padding:12px 14px;border:2px solid var(--border);border-radius:var(--r-md);font-size:15px;font-weight:700;background:var(--surface-2);outline:none;box-sizing:border-box;}
+  .gate-field input:focus{border-color:var(--c-primary);background:#fff;}
+  .gate-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:18px;}
+  .gate-actions .btn{min-width:120px;}
+  .gate-err{color:#E5484D;font-weight:800;font-size:13.5px;min-height:18px;margin-top:12px;}
+  .gate-help{margin-top:18px;text-align:left;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);padding:14px 16px;font-size:13.5px;font-weight:700;color:var(--ink-2);line-height:1.85;}
+  .gate-help summary{cursor:pointer;font-weight:900;color:var(--c-primary);font-size:13.5px;}
+  .gate-help .sh-line{margin:3px 0;}
+  .gate-back{display:block;margin-top:16px;font-size:13px;font-weight:800;color:var(--c-primary);text-decoration:none;}
+  .gate-back:hover{color:var(--c-primary-d);}
+</style>
+</head>
+<body>
+<div class="gate-wrap">
+  <div id="gateBox" class="gate-card">
+    <div class="gate-logo">🔤🪑</div>
+    <div class="gate-head" id="gateHead">座位入口</div>
+    <div class="gate-sub" id="gateSub">请输入座位号与口令，进入你的专属学习空间</div>
+    <div id="gateForm"></div>
+    <div class="gate-err" id="gateErr"></div>
+    <details class="gate-help"><summary>座位模式说明（点击展开）</summary><div id="gateHelp"></div></details>
+  </div>
+</div>
+
+<script src="seats.js"></script>
+<script>
+(function(){
+  const $ = s => document.querySelector(s);
+  const SEAT_NS = 'phonics_seat';
+  const seatBoundKey = id => SEAT_NS + id + '_bound';
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  const params = new URLSearchParams(location.search);
+  let seatId = (params.get('seat') || '').toUpperCase();
+
+  const helpText = window.SEAT_HELP || `本系统已开启 30 个座位，每人一个专属链接。
+数据按座位完全隔离：每个座位的学习记录、错题、计划都保存在各自独立的 localStorage 中，互不串档。
+首次打开专属链接：输入本座位口令完成设备绑定 → 进入系统；之后在同一台设备上打开本链接可免输口令。
+换设备 / 清缓存 / 隐身模式：需再次输入口令；口令是真正的钥匙。
+防共用为软性防护：理论上清缓存可绕过，请告知学生勿转发链接与口令。真正 100% 一人一号需后端账号体系，当前静态方案无法做到。
+口令重置：如需更换某座位口令，把新口令告诉管理员，更新后重新部署（链接不变）。`;
+
+  $('#gateHelp').innerHTML = helpText.split('\n').map(l => `<div class="sh-line">${esc(l)}</div>`).join('');
+
+  function isValid(id){ return (window.SEATS||[]).some(x => x.id === id); }
+  function seatPwd(id){ const s = (window.SEATS||[]).find(x => x.id === id); return s ? s.pwd : null; }
+  function isBound(id){ try { return localStorage.getItem(seatBoundKey(id)) === '1'; } catch(e){ return false; } }
+  function setBound(id){ try { localStorage.setItem(seatBoundKey(id), '1'); } catch(e){} }
+
+  const doAppRedirect = (typeof window.__gateRedirect__ === 'function')
+    ? window.__gateRedirect__
+    : function (id){ location.replace('index.html?seat=' + encodeURIComponent(id) + '#/home'); };
+  function goApp(id){ doAppRedirect(id); }
+
+  function lockForm(id){
+    $('#gateHead').textContent = id ? '🪑 座位 ' + id : '🪑 座位入口';
+    $('#gateSub').innerHTML = id
+      ? `首次打开本座位，请输入口令完成设备绑定。<br>之后本机免输口令，口令是真正的钥匙，请勿转发。`
+      : `请使用老师发放的专属链接，或手动输入座位号 + 口令。`;
+    $('#gateForm').innerHTML = `
+      ${id ? '' : `<div class="gate-field"><label>座位号（01–30）</label><input type="text" id="seatNo" placeholder="如 03" maxlength="2" autocomplete="off" /></div>`}
+      <div class="gate-field"><label>座位口令</label><input type="password" id="seatPwd" placeholder="请输入本座位口令" autocomplete="off" /></div>
+      <div class="gate-actions">
+        <button class="btn accent" id="btnEnter">🔓 进入系统</button>
+        <button class="btn soft" id="btnReset">↺ 换座位</button>
+      </div>`;
+    $('#btnEnter').onclick = doEnter;
+    $('#btnReset').onclick = () => { seatId = ''; location.search = ''; };
+    const pwd = $('#seatPwd');
+    pwd.addEventListener('keydown', e => { if(e.key==='Enter') doEnter(); });
+    if(!id){ const no=$('#seatNo'); no.addEventListener('keydown', e => { if(e.key==='Enter') doEnter(); }); setTimeout(()=>no.focus(),30); }
+    else setTimeout(()=>pwd.focus(),30);
+  }
+
+  function invalidPage(id){
+    $('#gateHead').textContent = '⚠️ 座位无效';
+    $('#gateSub').textContent = '链接中的座位号「' + esc(id) + '」不存在。本系统仅有 01–30 号座位。';
+    $('#gateForm').innerHTML = `
+      <div class="gate-actions"><button class="btn accent" id="btnHub">手动输入座位号</button></div>
+      <a class="gate-back" href="gate.html">返回座位入口首页</a>`;
+    $('#btnHub').onclick = () => { seatId=''; lockForm(''); };
+  }
+
+  function doEnter(){
+    const id = seatId || ($('#seatNo') ? ($('#seatNo').value||'').trim().toUpperCase() : '');
+    const pwd = ($('#seatPwd').value || '').trim().toUpperCase();
+    if(!isValid(id)){ $('#gateErr').textContent = '座位号无效（应为 01–30）。'; return; }
+    if(pwd !== seatPwd(id)){ $('#gateErr').textContent = '口令错误，请核对后重试。'; return; }
+    setBound(id);
+    goApp(id);
+  }
+
+  // 入口调度
+  if(!seatId){
+    lockForm('');
+  } else if(!isValid(seatId)){
+    invalidPage(seatId);
+  } else if(isBound(seatId)){
+    // 已绑定直接进，无需再输口令
+    goApp(seatId);
+  } else {
+    lockForm(seatId);
+  }
+})();
+</script>
+</body>
+</html>
