@@ -1,14 +1,17 @@
 /* =========================================================================
  * 少儿英语自然拼读学习系统 · 应用逻辑 (app.js)
- * 总控路由 + 12 功能模块 + 本地状态(localStorage) + 浏览器语音(Web Speech API)
- * 纯前端、开箱即用：无需服务器、无需 API Key、可离线运行。
+ * 总控路由 + 14 功能模块 + 本地状态(localStorage) + 浏览器语音(Web Speech API)
+ * 座位模式：进入前需通过 gate.html 座位口令校验，数据按座位号隔离存储。
+ * 纯前端：无需服务器、无需 API Key、可离线运行（发音由浏览器 TTS 实时合成）。
  * ========================================================================= */
 (function () {
   'use strict';
 
   /* ====================== 常量 ====================== */
-  // STORE_KEY 按座位命名空间动态赋值（座位模式下每个座位一份独立存储）
+  // 座位模式：STORE_KEY 按座位命名空间动态赋值（每个座位一份独立存储，互不串档）
   let STORE_KEY = 'phonics_state_v1';
+  const SEAT_NS = 'phonics_seat';
+  let SEAT = { id: null };
 
   const NAV_META = {
     home:    { t: '学习首页', s: '欢迎来到自然拼读乐园！' },
@@ -49,7 +52,7 @@
   const EMOJI = {apple:'🍎',ant:'🐜',ax:'🪓',ball:'⚽',bus:'🚌',book:'📚',cat:'🐱',cup:'🥤',cap:'🧢',dog:'🐶',duck:'🦆',desk:'🪑',egg:'🥚',elephant:'🐘',pen:'🖊️',fish:'🐟',fan:'🌀',fox:'🦊',goat:'🐐',gate:'🚪',girl:'👧',hat:'🎩',hen:'🐔',house:'🏠',igloo:'🛖',pig:'🐷',jump:'🦘',jet:'✈️',jam:'🍓',kite:'🪁',key:'🔑',king:'👑',lion:'🦁',leg:'🦵',leaf:'🍃',monkey:'🐵',milk:'🥛',map:'🗺️',nest:'🪺',nose:'👃',net:'🥅',octopus:'🐙',ox:'🐂',pencil:'✏️',pan:'🍳',queen:'👸',quiet:'🤫',rabbit:'🐰',red:'🔴',rain:'🌧️',sun:'☀️',snake:'🐍',six:'6️⃣',tiger:'🐯',ten:'🔟',top:'🔝',umbrella:'☂️',up:'⬆️',bug:'🐛',van:'🚐',violin:'🎻',vest:'🦺',water:'💧',worm:'🪱',web:'🕸️',box:'📦',yellow:'💛',yes:'✅',yoyo:'🪀',zebra:'🦓',zoo:'🦁',zip:'🤐',ship:'🚢',shoe:'👟',chip:'🍟',chair:'🪑',watch:'⌚',three:'3️⃣',thumb:'👍',this:'👉',whale:'🐋',wheel:'🛞',white:'⚪',lock:'🔒',sock:'🧦',cake:'🍰',name:'🏷️',bike:'🚲',time:'⏰',note:'📝',rope:'🪢',bone:'🦴',cube:'🧊',cute:'😊',mule:'🐴',mail:'✉️',play:'🎮',bee:'🐝',tree:'🌳',boat:'🚤',coat:'🧥',snow:'❄️',moon:'🌕',food:'🍔',car:'🚗',star:'⭐',farm:'🚜',fork:'🍴',corn:'🌽',horse:'🐴',her:'👩',bird:'🐦',turn:'🔄',mat:'🟫',glad:'😀',match:'🤝',pit:'🕳️',dig:'⛏️',fit:'💪',cape:'🦸',tap:'👆',tape:'📼',sheep:'🐑',sweet:'🍬',trip:'🧳',born:'👶',warm:'🔥',happy:'😄',glad:'😀'};
 
   /* ====================== 状态层 ====================== */
-  // 注意：state 在 init 时加载（开放访问，单一本地命名空间）
+  // 注意：state 在 init 时加载；座位模式下 STORE_KEY 按座位号命名，数据按座位隔离
   let state = null;
   function load() {
     try {
@@ -1983,16 +1986,45 @@
     });
   };
 
-  /* ====================== 初始化（开放访问 · 开箱即用） ====================== */
+  /* ====================== 座位模式（恢复 gate.html 口令系统） ======================
+   * 进入应用前必须通过 gate.html 校验：URL 带 ?seat=XX 且本机已绑定（phonics_seatXX_bound）才放行；
+   * 否则跳转 gate.html（未带座位号 → 手动输入；未绑定 → 输入口令完成绑定）。
+   * 通过后按座位命名空间隔离存储：phonics_seatXX_state_v1，互不串档。
+   */
+  function seatBoundKey(id) { return SEAT_NS + id + '_bound'; }
+  function seatValid(id) { return !!(window.SEATS || []).some(x => x.id === id); }
+  function seatBound(id) { try { return localStorage.getItem(seatBoundKey(id)) === '1'; } catch (e) { return false; } }
+  function checkSeatOrRedirect() {
+    const id = (new URLSearchParams(location.search).get('seat') || '').trim().toUpperCase();
+    if (!id || !seatValid(id)) { location.replace('gate.html'); return false; }
+    if (!seatBound(id)) { location.replace('gate.html?seat=' + encodeURIComponent(id)); return false; }
+    SEAT.id = id;
+    STORE_KEY = SEAT_NS + id + '_state_v1';
+    return true;
+  }
+  function renderSeatBadge() {
+    const b = $('#seatBadge'); if (!b) return;
+    b.style.display = '';
+    b.textContent = '🪑 座位 ' + SEAT.id;
+    b.title = '点击换座位 / 退出';
+    b.style.cursor = 'pointer';
+    b.onclick = () => { location.href = 'gate.html'; };
+  }
+
+  /* ====================== 初始化（座位模式 · 通过口令后进入） ====================== */
   function init() {
     // 全局事件委托：任何带 data-nav 的元素（侧边栏/底部导航/首页模块卡）点击后切换到对应独立路由
     document.addEventListener('click', function (e) {
       const t = e.target.closest('[data-nav]');
       if (t) { e.preventDefault(); navigate(t.getAttribute('data-nav')); }
     });
-    // 开放访问：直接进入主应用，无需口令、无需联网、无需额外配置
+    // 座位门禁：未通过 gate.html 校验直接跳走，不再渲染主应用
+    if (!checkSeatOrRedirect()) return;
     state = load();
+    // 新座位默认昵称标注座位号，方便老师一眼识别
+    if (!state.nickname || state.nickname === '小勇士') { state.nickname = '座位 ' + SEAT.id + ' 同学'; state.avatar = '🐯'; save(); }
     initNick();
+    renderSeatBadge();
     const start = (location.hash || '').replace(/^#\/?/, '').trim();
     navigate(NAV_META[start] ? start : 'home', true);
     // 移动端：等待首次用户手势解锁系统媒体声音（iOS Safari / Android Chrome 自动播放策略）
