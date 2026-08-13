@@ -95,10 +95,13 @@
   function closeModal() { $('#modalMask').classList.remove('show'); }
   $('#modalMask').addEventListener('click', e => { if (e.target.id === 'modalMask') closeModal(); });
 
-  /* ====================== 语音 (Web Speech API) ======================
-   * 说明：本应用为「开箱即用、离线可用」的纯前端应用，未内置任何 mp3/ogg 音频文件。
-   * 26 个字母及所有单词的「发音资源」一律由浏览器内置的语音合成引擎（TTS）实时生成，
-   * 因此无需联网、无需配置即可播放；下方 speak() 已针对移动端做了加固。
+  /* ====================== 语音 (Web Speech API + 在线 TTS 兜底) ======================
+   * 说明：本应用为纯前端应用，未内置任何 mp3/ogg 音频文件。
+   * ① 常规浏览器：用内置语音合成（speechSynthesis）实时生成，离线可用；
+   * ② 微信内置浏览器（X5/WKWebView）对 speechSynthesis 支持不稳定甚至缺失，
+   *    自动切换到「在线 TTS 音频」兜底：<audio> 播放百度翻译 gettts（国内可达，
+   *    单词/短句清晰；依赖非空 Referer——浏览器加载跨域媒体会自动带页面 Referer，
+   *    正好满足），失败再试有道词典 dictvoice；长文本按句拆开逐句排队播放。
    */
   // 预加载英文语音（移动端语音列表异步加载，必须等 onvoiceschanged）
   let _voices = [], _voiceReady = false;
@@ -115,10 +118,52 @@
     }
     return _voices.find(x => (x.lang || '').startsWith('en')) || null;
   }
+  /* —— 微信内置浏览器检测 —— */
+  function isWeChat() { return /MicroMessenger/i.test(navigator.userAgent || ''); }
+
+  /* —— 在线 TTS 音频兜底引擎（微信 / 无 speechSynthesis 时使用） —— */
+  let _ttsAudio = null, _ttsQueue = [], _ttsPlaying = false;
+  function ttsUrlBaidu(t, lan) { return 'https://fanyi.baidu.com/gettts?lan=' + lan + '&text=' + encodeURIComponent(t) + '&spd=3&source=web'; }
+  function ttsUrlYoudao(t) { return 'https://dict.youdao.com/dictvoice?audio=' + encodeURIComponent(t) + '&type=1'; }
+  function ttsPlayNext() {
+    if (!_ttsQueue.length) { _ttsPlaying = false; return; }
+    _ttsPlaying = true;
+    const seg = _ttsQueue.shift();
+    try {
+      if (!_ttsAudio) { _ttsAudio = new Audio(); _ttsAudio.preload = 'auto'; }
+      const a = _ttsAudio;
+      const urls = seg.zh ? [ttsUrlBaidu(seg.t, 'zh')] : [ttsUrlBaidu(seg.t, 'en'), ttsUrlYoudao(seg.t)];
+      let i = 0;
+      const attempt = () => {
+        if (i >= urls.length) { ttsPlayNext(); return; }   // 所有源都失败 → 播下一句
+        a.onerror = () => { i++; attempt(); };
+        a.onended = () => { ttsPlayNext(); };
+        a.src = urls[i++];
+        try {
+          const p = a.play();
+          if (p && p.catch) p.catch(() => { i++; attempt(); });
+        } catch (e) { i++; attempt(); }
+      };
+      attempt();
+    } catch (e) { ttsPlayNext(); }
+  }
+  function playTtsAudio(text, lang) {
+    try {
+      if (_ttsPlaying && _ttsAudio) { try { _ttsAudio.pause(); } catch (e) {} }  // 打断上一条
+      _ttsQueue = [];
+      const zh = (lang || 'en-US').indexOf('zh') === 0;
+      // 长文本按句拆开逐句播放（百度 gettts 单句支持更稳）；无标点则整段播放
+      const parts = String(text).match(/[^.!?。！？]+[.!?。！？]*/g) || [String(text)];
+      _ttsQueue = parts.map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean).map(t => ({ t: t, zh: zh }));
+      _ttsPlaying = false;
+      ttsPlayNext();
+    } catch (e) { toast('当前环境无法播放发音'); }
+  }
   function speak(text, lang) {
     lang = lang || 'en-US';
     if (!text) return;
-    if (!('speechSynthesis' in window)) { toast('当前浏览器不支持语音发音'); return; }
+    // 微信内置浏览器 / 无 Web Speech API → 用在线 TTS 音频兜底
+    if (isWeChat() || !('speechSynthesis' in window)) { playTtsAudio(text, lang); return; }
     try {
       window.speechSynthesis.cancel();                 // 先清空队列，避免连点堆叠
       const u = new SpeechSynthesisUtterance(String(text));
@@ -131,7 +176,7 @@
       }, 320);
       u.onend = function () { clearTimeout(retry); };
       u.onerror = function () { clearTimeout(retry); };
-    } catch (e) {}
+    } catch (e) { playTtsAudio(text, lang); }
   }
   if ('speechSynthesis' in window) {
     loadVoices();
