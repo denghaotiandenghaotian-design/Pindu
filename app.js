@@ -23,7 +23,10 @@
     quiz:    { t: '测试题', s: '单点知识快速自测' },
     reading: { t: '文章阅读题', s: '可解码短文 + 阅读理解' },
     lecture: { t: '名师讲课', s: '课前导入 + 名师课程 · 听课跟读' },
-    checkin: { t: '打卡学习', s: '听·说·读·写 成长档案' }
+    checkin: { t: '打卡学习', s: '听·说·读·写 成长档案' },
+    pronounce:{ t: '发音评测', s: '跟读评测 · 易混纠音 · 口型指导 · 闯关' },
+    curriculum:{ t: '学习路线', s: '8课大冒险 · 分步操作指引 · 关键提示' },
+    curriculumLesson:{ t: '课程详情', s: '每关专属学习页 · 预习/学习/复习/评测' }
   };
 
   const MODULES = [
@@ -38,13 +41,15 @@
     { id:'quiz',    no:'09', name:'测试题',     icon:'✅', color:'#5B8DEF', desc:'单点知识快速自测过关' },
     { id:'reading', no:'10', name:'文章阅读题', icon:'📖', color:'#54C9A6', desc:'可解码短文+理解检测' },
     { id:'lecture', no:'11', name:'名师讲课',    icon:'👩‍🏫', color:'#2BB3C0', desc:'课前导入 + 名师课程·播放·章节字幕' },
-    { id:'checkin', no:'12', name:'打卡学习',   icon:'🌟', color:'#FF9F43', desc:'听/说/读/写 成长周报' }
+    { id:'checkin', no:'12', name:'打卡学习',   icon:'🌟', color:'#FF9F43', desc:'听/说/读/写 成长周报' },
+    { id:'pronounce',no:'13', name:'发音评测', icon:'🎙️', color:'#E8743B', desc:'跟读评测/易混纠音/口型指导/闯关' },
+    { id:'curriculum',no:'14', name:'学习路线', icon:'🗺️', color:'#9B6BF2', desc:'8课大冒险·分步操作指引·关键提示' }
   ];
 
   const EMOJI = {apple:'🍎',ant:'🐜',ax:'🪓',ball:'⚽',bus:'🚌',book:'📚',cat:'🐱',cup:'🥤',cap:'🧢',dog:'🐶',duck:'🦆',desk:'🪑',egg:'🥚',elephant:'🐘',pen:'🖊️',fish:'🐟',fan:'🌀',fox:'🦊',goat:'🐐',gate:'🚪',girl:'👧',hat:'🎩',hen:'🐔',house:'🏠',igloo:'🛖',pig:'🐷',jump:'🦘',jet:'✈️',jam:'🍓',kite:'🪁',key:'🔑',king:'👑',lion:'🦁',leg:'🦵',leaf:'🍃',monkey:'🐵',milk:'🥛',map:'🗺️',nest:'🪺',nose:'👃',net:'🥅',octopus:'🐙',ox:'🐂',pencil:'✏️',pan:'🍳',queen:'👸',quiet:'🤫',rabbit:'🐰',red:'🔴',rain:'🌧️',sun:'☀️',snake:'🐍',six:'6️⃣',tiger:'🐯',ten:'🔟',top:'🔝',umbrella:'☂️',up:'⬆️',bug:'🐛',van:'🚐',violin:'🎻',vest:'🦺',water:'💧',worm:'🪱',web:'🕸️',box:'📦',yellow:'💛',yes:'✅',yoyo:'🪀',zebra:'🦓',zoo:'🦁',zip:'🤐',ship:'🚢',shoe:'👟',chip:'🍟',chair:'🪑',watch:'⌚',three:'3️⃣',thumb:'👍',this:'👉',whale:'🐋',wheel:'🛞',white:'⚪',lock:'🔒',sock:'🧦',cake:'🍰',name:'🏷️',bike:'🚲',time:'⏰',note:'📝',rope:'🪢',bone:'🦴',cube:'🧊',cute:'😊',mule:'🐴',mail:'✉️',play:'🎮',bee:'🐝',tree:'🌳',boat:'🚤',coat:'🧥',snow:'❄️',moon:'🌕',food:'🍔',car:'🚗',star:'⭐',farm:'🚜',fork:'🍴',corn:'🌽',horse:'🐴',her:'👩',bird:'🐦',turn:'🔄',mat:'🟫',glad:'😀',match:'🤝',pit:'🕳️',dig:'⛏️',fit:'💪',cape:'🦸',tap:'👆',tape:'📼',sheep:'🐑',sweet:'🍬',trip:'🧳',born:'👶',warm:'🔥',happy:'😄',glad:'😀'};
 
   /* ====================== 状态层 ====================== */
-  // 注意：state 延迟到「座位解锁」后才加载（见 finishInit），以保证按座位命名空间隔离
+  // 注意：state 在 init 时加载（开放访问，单一本地命名空间）
   let state = null;
   function load() {
     try {
@@ -61,7 +66,8 @@
       plan: null,         // {days:[{date,newItems,revItems,done}], created}
       checkins: {},       // dateStr -> {listen,speak,read,write,recite:[]}
       lastCheckinDate: null,
-      stats: { practice: 0, exam: 0 }
+      stats: { practice: 0, exam: 0 },
+      pronScores: []      // 发音评测记录：{date,target,sym,score,mode} mode='mic'|'self'
     };
   }
   function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {} }
@@ -86,16 +92,184 @@
   function closeModal() { $('#modalMask').classList.remove('show'); }
   $('#modalMask').addEventListener('click', e => { if (e.target.id === 'modalMask') closeModal(); });
 
-  /* ====================== 语音 (Web Speech API) ====================== */
+  /* ====================== 语音 (Web Speech API) ======================
+   * 说明：本应用为「开箱即用、离线可用」的纯前端应用，未内置任何 mp3/ogg 音频文件。
+   * 26 个字母及所有单词的「发音资源」一律由浏览器内置的语音合成引擎（TTS）实时生成，
+   * 因此无需联网、无需配置即可播放；下方 speak() 已针对移动端做了加固。
+   */
+  // 预加载英文语音（移动端语音列表异步加载，必须等 onvoiceschanged）
+  let _voices = [], _voiceReady = false;
+  function loadVoices() {
+    try { _voices = window.speechSynthesis.getVoices() || []; } catch (e) { _voices = []; }
+    _voiceReady = _voices.length > 0;
+  }
+  function pickVoice() {
+    if (!_voices.length) return null;
+    const pref = ['en-US', 'en-GB', 'en_US', 'en_GB'];
+    for (const p of pref) {
+      const v = _voices.find(x => (x.lang || '').replace('_', '-') === p);
+      if (v) return v;
+    }
+    return _voices.find(x => (x.lang || '').startsWith('en')) || null;
+  }
   function speak(text, lang) {
     lang = lang || 'en-US';
+    if (!text) return;
+    if (!('speechSynthesis' in window)) { toast('当前浏览器不支持语音发音'); return; }
     try {
-      if (!('speechSynthesis' in window)) { toast('当前浏览器不支持语音发音'); return; }
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = lang; u.rate = 0.85; u.pitch = 1.05;
+      window.speechSynthesis.cancel();                 // 先清空队列，避免连点堆叠
+      const u = new SpeechSynthesisUtterance(String(text));
+      u.lang = lang; u.rate = 0.85; u.pitch = 1.05; u.volume = 1;
+      const v = pickVoice(); if (v) u.voice = v;        // 指定英文语音，避免读成中文腔
       window.speechSynthesis.speak(u);
+      // iOS/Safari 已知 bug：首句偶尔被立刻截断而不发声 → 320ms 后若仍未在播则补播一次
+      const retry = setTimeout(function () {
+        try { if (!window.speechSynthesis.speaking) window.speechSynthesis.speak(u); } catch (e) {}
+      }, 320);
+      u.onend = function () { clearTimeout(retry); };
+      u.onerror = function () { clearTimeout(retry); };
     } catch (e) {}
+  }
+  if ('speechSynthesis' in window) {
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  }
+
+  /* ====================== 移动端音频解锁（兼容自动播放策略） ======================
+   * 主流手机浏览器（iOS Safari / Android Chrome）要求「音频必须在用户手势内启动」，
+   * 否则系统媒体声音被静音、点字母/单词都听不到。首次触摸或点击时：恢复 AudioContext
+   * 并播放一段静音缓冲，解锁系统媒体声音；之后 <audio> 回放与 TTS 即可在手机上正常出声。
+   */
+  let _actx = null, _audioUnlocked = false;
+  function getAudioCtx() {
+    if (!_actx) { try { _actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { _actx = null; } }
+    return _actx;
+  }
+  function unlockAudio() {
+    if (_audioUnlocked) return;
+    _audioUnlocked = true;
+    const ctx = getAudioCtx();
+    if (ctx && ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+    if (ctx) {
+      try {
+        const buf = ctx.createBuffer(1, 1, 22050);
+        const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination); src.start(0);
+      } catch (e) {}
+    }
+    if ('speechSynthesis' in window) { try { window.speechSynthesis.cancel(); } catch (e) {} }  // 预热 TTS
+    hideAudioHint();
+  }
+  function bindAudioUnlock() {
+    const evs = ['pointerdown', 'touchstart', 'click', 'keydown'];
+    const handler = function () { unlockAudio(); evs.forEach(e => document.removeEventListener(e, handler, true)); };
+    evs.forEach(e => document.addEventListener(e, handler, true));
+  }
+  function showAudioHint() {
+    if (_audioUnlocked) return;
+    let h = document.getElementById('audioHint');
+    if (!h) {
+      h = document.createElement('div'); h.id = 'audioHint'; h.className = 'audio-hint';
+      h.innerHTML = '🔊 轻触屏幕任意处，开启声音';
+      document.body.appendChild(h);
+    }
+    requestAnimationFrame(() => h.classList.add('show'));
+  }
+  function hideAudioHint() { const h = document.getElementById('audioHint'); if (h) h.classList.remove('show'); }
+
+  /* ====================== 语音识别（Web Speech API · 发音评测辅助） ======================
+   * 说明：浏览器内置 SpeechRecognition 把孩子的「跟读」转成文字，再与标准词比对给分。
+   * 若浏览器不支持（如部分 Safari / 隐身模式），自动降级为「家长/自评」三档按钮，保证开箱即用。
+   */
+  function micSupported() { return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
+  function recognize(cb) {
+    if (!micSupported()) { cb(null, 'unsupported'); return; }
+    try {
+      const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const r = new Rec();
+      r.lang = 'en-US'; r.interimResults = false; r.maxAlternatives = 1; r.continuous = false;
+      let done = false;
+      r.onresult = e => { done = true; const txt = ((e.results[0][0].transcript) || '').toLowerCase().replace(/[^a-z]/g, ''); cb(txt, 'ok'); };
+      r.onerror = e => { if (!done) cb(null, (e && e.error) || 'error'); };
+      r.onend = () => { if (!done) cb(null, 'no-speech'); };
+      r.start();
+    } catch (e) { cb(null, 'error'); }
+  }
+  /* —— 真实麦克风录音（getUserMedia + MediaRecorder，本地完成，不依赖谷歌云识别） ——
+   * 解决「麦克风录不了音」：原方案依赖浏览器 SpeechRecognition（需联网、国内常被墙）。
+   * 现改为本地录音：录完可试听并对照标准音自评，彻底离线可用。
+   */
+  function micCaptureSupported() {
+    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && (window.MediaRecorder || window.webkitMediaRecorder));
+  }
+  function recordUser(opts) {
+    opts = opts || {};
+    if (!micCaptureSupported()) { opts.onErr && opts.onErr('unsupported'); return; }
+    let stream, rec, chunks = [], ac, analyser, srcNode, raf, stopped = false;
+    const MR = window.MediaRecorder || window.webkitMediaRecorder;
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (s) {
+      stream = s;
+      try {
+        rec = new MR(stream);
+        rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+        rec.onstop = function () {
+          let url = null;
+          try { url = URL.createObjectURL(new Blob(chunks, { type: rec.mimeType || 'audio/webm' })); } catch (e) {}
+          cleanup(); opts.onDone && opts.onDone(url);
+        };
+        rec.start();
+        try {
+          ac = new (window.AudioContext || window.webkitAudioContext)();
+          analyser = ac.createAnalyser(); analyser.fftSize = 256;
+          srcNode = ac.createMediaStreamSource(stream); srcNode.connect(analyser);
+          const data = new Uint8Array(analyser.frequencyBinCount);
+          (function loop() {
+            if (stopped) return;
+            analyser.getByteTimeDomainData(data);
+            let sum = 0; for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; sum += v * v; }
+            const rms = Math.sqrt(sum / data.length);
+            opts.onLevel && opts.onLevel(Math.min(1, rms * 3.2));
+            raf = requestAnimationFrame(loop);
+          })();
+        } catch (e) {}
+        opts.onState && opts.onState('recording');
+        setTimeout(function () { if (!stopped) stop(); }, opts.duration || 4000);
+      } catch (e) { cleanup(); opts.onErr && opts.onErr('recorder'); }
+    }).catch(function () {
+      opts.onErr && opts.onErr(window.isSecureContext ? 'denied' : 'insecure');
+    });
+    function stop() {
+      if (stopped) return; stopped = true;
+      try { if (raf) cancelAnimationFrame(raf); } catch (e) {}
+      try { if (rec && rec.state !== 'inactive') rec.stop(); } catch (e) { cleanup(); opts.onDone && opts.onDone(null); }
+    }
+    function cleanup() {
+      try { if (srcNode) srcNode.disconnect(); } catch (e) {}
+      try { if (ac) ac.close(); } catch (e) {}
+      try { if (stream) stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+    }
+    recordUser._stop = stop;
+  }
+
+  function scoreFromText(target, txt) {
+    target = (target || '').toLowerCase().replace(/[^a-z]/g, '');
+    if (!txt || !target) return 0;
+    if (txt === target) return 96;
+    if (txt.indexOf(target) >= 0 || target.indexOf(txt) >= 0) return 80;
+    let same = 0; for (let i = 0; i < target.length; i++) if (txt.indexOf(target[i]) >= 0) same++;
+    return Math.max(20, Math.round(same / target.length * 58));
+  }
+  function pronOf(sym) {
+    return (KB.pronunciation || []).find(p => p.sym === sym) || null;
+  }
+  function logPron(target, sym, score, mode) {
+    state.pronScores.push({ date: todayStr(), target: target, sym: sym || '', score: score, mode: mode });
+    if (state.pronScores.length > 400) state.pronScores = state.pronScores.slice(-400);
+    save();
+  }
+  function pronGrade(score) {
+    if (score >= 90) return { t: '准确', c: 'ok', emoji: '🌟' };
+    if (score >= 70) return { t: '基本准确', c: 'warn', emoji: '⚠️' };
+    return { t: '需要纠音', c: 'no', emoji: '🔴' };
   }
 
   /* ====================== 考点库扁平化 ====================== */
@@ -207,8 +381,8 @@
     }
     function finish(ok, chosen) {
       const q = questions[idx];
-      if (q.type === 'match') { correct++; perQ.push({ unitId: q.unitId, ok: true }); }
-      else { if (ok) correct++; else { weak[q.unitId] = (weak[q.unitId] || 0) + 1; if (meta.recordWrong !== false) logWrong(q, chosen); } perQ.push({ unitId: q.unitId, ok: !!ok }); }
+      if (q.type === 'match') { correct++; perQ.push({ unitId: q.unitId, ok: true, layerId: q.layerId }); }
+      else { if (ok) correct++; else { weak[q.unitId] = (weak[q.unitId] || 0) + 1; if (meta.recordWrong !== false) logWrong(q, chosen); } perQ.push({ unitId: q.unitId, ok: !!ok, layerId: q.layerId }); }
       recordAnswer(q.unitId, ok, q.type);
       if (ok && meta.onCorrect) meta.onCorrect(q);
       idx++;
@@ -314,27 +488,29 @@
   // 点击后整体替换 #content（先清空再渲染），主页只保留概览，不会出现内容无限累加。
   const ROUTER = { current: 'home' };
 
-  // 切换路由：写入可分享的 URL（#/xxx），并整体渲染目标视图
-  function navigate(nav, replace) {
+  // 切换路由：写入可分享的 URL（#/xxx 或 #/xxx/arg），并整体渲染目标视图
+  // 第二个参数 arg 用于带子路径的页面（如课程专属页 lessonId），可被深链/直接访问。
+  function navigate(nav, arg, replace) {
     if (!NAV_META[nav]) nav = 'home';
-    const target = '#/' + nav;
-    if (location.hash === target) { renderRoute(nav); return; }   // 同一路由：仅重渲染，不重复入栈
-    if (replace) history.replaceState({ nav }, '', target);        // 首屏：替换 URL，不新增历史
-    else history.pushState({ nav }, '', target);                  // 正常跳转：新增历史（支持后退）
-    renderRoute(nav);
+    const target = '#/' + nav + (arg != null ? '/' + arg : '');
+    if (location.hash === target) { renderRoute(nav, arg); return; }   // 同一路由：仅重渲染，不重复入栈
+    if (replace) history.replaceState({ nav, arg }, '', target);        // 首屏：替换 URL，不新增历史
+    else history.pushState({ nav, arg }, '', target);                  // 正常跳转：新增历史（支持后退）
+    renderRoute(nav, arg);
   }
 
   // 真正负责「清空旧内容 + 渲染新视图」的核心：保证每次切换都是独立页面
-  function renderRoute(nav) {
+  function renderRoute(nav, arg) {
     if (!NAV_META[nav]) nav = 'home';
     ROUTER.current = nav;
+    ROUTER.arg = arg || null;
     $('#pageTitle').textContent = NAV_META[nav].t;
     $('#pageSub').textContent = NAV_META[nav].s;
     $$('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.nav === nav));
     $$('.bn-item').forEach(b => b.classList.toggle('active', b.dataset.nav === nav));
     const c = $('#content');
     c.innerHTML = '';                                  // 关键：每次切换先【清空】，内容不累加堆叠
-    (VIEWS[nav] || VIEWS.home)(c);                    // 渲染该路由对应的独立视图
+    (VIEWS[nav] || VIEWS.home)(c, arg);               // 渲染该路由对应的独立视图（arg 透传子路径）
     // 重新触发「进入」动画，让切换平滑、所见即所得
     c.classList.remove('view-in'); void c.offsetWidth; c.classList.add('view-in');
     // 定位高亮：让目标板块的标题「亮一下」，明确告知用户已到位
@@ -355,9 +531,12 @@
   // 统一从 URL 的 hash 还原对应独立路由，确保深链 / 直接访问始终进入正确页面且布局样式不变。
   function routeFromHash() {
     const h = (location.hash || '').replace(/^#\/?/, '').trim();
-    const nav = NAV_META[h] ? h : 'home';
-    if (nav === ROUTER.current) return;   // 后退/前进与 hashchange 可能双触发，避免重复渲染造成闪烁
-    renderRoute(nav);
+    const seg = h.split('/');
+    const nav = NAV_META[seg[0]] ? seg[0] : 'home';
+    const arg = seg[1] || null;
+    if (nav === ROUTER.current && arg === (ROUTER.arg || null)) return;   // 后退/前进与 hashchange 可能双触发，避免重复渲染造成闪烁
+    ROUTER.arg = arg;
+    renderRoute(nav, arg);
   }
   window.addEventListener('popstate', routeFromHash);
   window.addEventListener('hashchange', routeFromHash);
@@ -450,6 +629,7 @@
       <div class="row" style="margin:12px 0"><input type="text" class="search-box" id="libSearch" placeholder="🔍 搜单词或音素，如 cat / sh / the" /></div>
       <div class="cat-tabs" id="libTabs"></div>
       <div class="unit-list" id="libList"></div>`;
+    const lb = renderLetterBoard(); if (lb) c.appendChild(lb);
     c.appendChild(card);
     const tabs = $('#libTabs');
     let activeCat = KB.categories[0];
@@ -506,6 +686,34 @@
     card.innerHTML = `<div class="uh"><div><div class="usym">${esc(u.sym || u.label)}</div></div><div style="text-align:right"><div class="uipa">${esc(u.ipa || '')}</div><span class="chip ${m === 'mastered' ? 'mint' : m === 'learning' ? '' : 'gray'}">${m === 'mastered' ? '已掌握' : m === 'learning' ? '在学' : '未学'}</span></div></div><div class="muted" style="font-size:12px;margin-bottom:6px">${esc(u.tip || u.label)}</div>${words}`;
     card.querySelectorAll('.wv').forEach(b => b.onclick = () => speak(b.dataset.w));
     return card;
+  }
+
+  /* ====================== 字母点读台（点击任意字母播放其发音） ====================== */
+  function renderLetterBoard() {
+    const cat = KB.categories.find(c => c.id === 'letters');
+    if (!cat) return null;
+    const wrap = el('div', 'card letter-board');
+    wrap.innerHTML = `<div class="section-title" style="margin-top:0">🔤 字母点读台 <span class="muted" style="font-weight:700;font-size:13px">点任意字母，听它的名字与发音</span></div>
+      <div class="letter-grid" id="letterGrid"></div>
+      <p class="muted" style="font-size:12px;margin:10px 2px 0">💡 点击字母会先念字母名、再念代表词（如 A → apple），代表词里就藏着这个字母的发音。建议在手机上首次使用前先轻触屏幕开启声音。</p>`;
+    const grid = wrap.querySelector('#letterGrid');
+    cat.units.forEach(u => {
+      const name = (u.label.replace('字母', '').trim()) || u.sym;
+      const word = u.words && u.words[0] && u.words[0].w;
+      const tile = el('button', 'letter-tile');
+      tile.type = 'button';
+      tile.innerHTML = `<span class="lt-ch">${esc(name.toUpperCase())}</span><span class="lt-sym">${esc(u.sym)}</span>`;
+      tile.title = `${name} → ${word}`;
+      tile.onclick = () => {
+        unlockAudio();
+        // 字母名 + 代表词：TTS 实时合成，离线可用，且不受手机静音键影响
+        speak(`${name}. ${word}`, 'en-US');
+        tile.classList.add('tapped');
+        setTimeout(() => tile.classList.remove('tapped'), 260);
+      };
+      grid.appendChild(tile);
+    });
+    return wrap;
   }
 
   /* ====================== 二、智能刷题 ====================== */
@@ -915,30 +1123,127 @@
     }
   };
 
-  /* ====================== 九、测试题（单点） ====================== */
+  /* ====================== 九、测试题（单点 / 定级 / 结业） ====================== */
   VIEWS.quiz = function (c) {
     const card = el('div', 'card');
-    card.innerHTML = `<div class="section-title" style="margin-top:0">✅ 测试题（单点自测）</div>
-      <div class="toolbar">
+    card.innerHTML = `<div class="section-title" style="margin-top:0">✅ 测试题</div>
+      <p class="muted">三种模式：单点自测（巩固某一知识点）、入门定级测评（找到起点级别）、阶段结业测评（检测是否达标升级）。</p>
+      <div class="cat-tabs" id="qMode">
+        <button class="cat-tab active" data-m="single">📍 单点自测</button>
+        <button class="cat-tab" data-m="place">🎯 入门定级测评</button>
+        <button class="cat-tab" data-m="grad">🏆 阶段结业测评</button>
+      </div>
+      <div id="qHost"></div>`;
+    c.appendChild(card);
+    const host = $('#qHost');
+    $('#qMode').querySelectorAll('.cat-tab').forEach(b => b.onclick = () => { $('#qMode').querySelectorAll('.cat-tab').forEach(x => x.classList.remove('active')); b.classList.add('active'); renderMode(b.dataset.m); });
+    renderMode('single');
+
+    function renderMode(mode) {
+      host.innerHTML = '';
+      if (mode === 'single') renderSingle();
+      else if (mode === 'place') renderPlace();
+      else renderGrad();
+    }
+
+    function renderSingle() {
+      const box = el('div');
+      box.innerHTML = `<div class="toolbar">
         <div class="field"><label>测试知识点</label><select id="qUnit"></select></div>
         <div class="field"><label>题型</label><select id="qType"><option value="mix">混合</option><option value="listen">听音辨字</option><option value="read">看字读音</option><option value="blank">选词填空</option></select></div>
         <div class="field"><label>题量 (3–10)</label><input type="number" id="qCount" value="5" min="3" max="10" style="width:80px" /></div>
         <div class="field"><label>&nbsp;</label><button class="btn mint" id="qStart">▶ 开始自测</button></div>
-      </div>
-      <div id="qHost"></div>`;
-    c.appendChild(card);
-    $('#qUnit').innerHTML = KB.categories.flatMap(cat => cat.units.map(u => `<option value="${u.id}">${cat.icon} ${u.label}</option>`)).join('');
-    $('#qStart').onclick = () => {
-      const u = findUnit($('#qUnit').value); if (!u) return;
-      const n = Math.max(3, Math.min(10, parseInt($('#qCount').value) || 5));
-      const t = $('#qType').value;
+      </div>`;
+      host.appendChild(box);
+      $('#qUnit').innerHTML = KB.categories.flatMap(cat => cat.units.map(u => `<option value="${u.id}">${cat.icon} ${u.label}</option>`)).join('');
+      $('#qStart').onclick = () => {
+        const u = findUnit($('#qUnit').value); if (!u) return;
+        const n = Math.max(3, Math.min(10, parseInt($('#qCount').value) || 5));
+        const t = $('#qType').value;
+        const qs = [];
+        for (let i = 0; i < n; i++) { const w = rand(u.words); qs.push(buildQuestion(u, w, t === 'mix' ? rand(['listen','read','blank']) : t)); }
+        runQuiz(host, qs, { label: '单点自测 · ' + u.label, back: 'quiz', onAgain: () => $('#qStart').click() });
+      };
+    }
+
+    function buildLayerQuestions() {
       const qs = [];
-      for (let i = 0; i < n; i++) { const w = rand(u.words); qs.push(buildQuestion(u, w, t === 'mix' ? rand(['listen','read','blank']) : t)); }
-      runQuiz($('#qHost'), qs, {
-        label: '单点自测 · ' + u.label, back: 'quiz',
-        onAgain: () => $('#qStart').click()
+      KB.placement.layers.forEach(layer => {
+        const units = layer.cats.flatMap(cid => { const cat = KB.categories.find(c => c.id === cid); return cat ? cat.units : []; });
+        if (!units.length) return;
+        while (qs.filter(x => x.layerId === layer.id).length < layer.count) {
+          const u = rand(units); const w = rand(u.words);
+          const q = buildQuestion(u, w, rand(['listen','read','blank'])); q.layerId = layer.id; qs.push(q);
+        }
       });
-    };
+      return qs;
+    }
+
+    function renderPlace() {
+      const box = el('div');
+      box.innerHTML = `<p class="muted">阶梯式 4 层测评（字母音 → CVC → 长元音/组合 → 进阶），帮你找到最合适的起点级别。建议家长陪着一起做～</p>
+        <div class="q-actions"><button class="btn accent" id="plStart">🎯 开始定级测评（约 ${KB.placement.layers.reduce((a,l)=>a+l.count,0)} 题）</button></div>`;
+      host.appendChild(box);
+      $('#plStart').onclick = () => {
+        const qs = buildLayerQuestions();
+        runQuiz(host, qs, { label: '入门定级测评', back: 'quiz', diagnose: renderPlaceReport, onAgain: () => $('#plStart').click() });
+      };
+    }
+    function renderPlaceReport(res) {
+      const wrap = res.wrap; wrap.innerHTML = '';
+      const layers = KB.placement.layers.map(L => {
+        const items = res.perQ.filter(p => p.layerId === L.id);
+        const ok = items.filter(p => p.ok).length;
+        const total = items.length || 1;
+        const pct = Math.round(ok / total * 100);
+        return { L, ok, total, pct, mastered: pct >= 80 };
+      });
+      const firstNot = layers.find(l => !l.mastered);
+      const startLevel = firstNot ? firstNot.L.name : '已完成全部四层，可挑战分级读物与进阶组合！';
+      const card = el('div', 'q-card center');
+      let html = `<div style="font-size:54px">🎯</div><h2 style="margin:6px 0">定级测评报告</h2>`;
+      html += layers.map(l => `<div class="bar-row"><span class="bar-label">${esc(l.L.name)}</span><div class="bar"><i style="width:${l.pct}%;background:${l.mastered ? '#54C9A6' : '#FF9F43'}"></i></div><span class="bar-val">${l.pct}% ${l.mastered ? '✅' : '⚠️'}</span></div>`).join('');
+      html += `<div class="intro-q" style="background:var(--c-primary);margin-top:14px">💡 建议起点：<b>${esc(startLevel)}</b></div>`;
+      html += `<p class="muted" style="margin-top:10px">${firstNot ? '先把没掌握的那一层在「智能刷题」里多练几遍吧！' : '基础已扎实，可进入分级阅读与进阶组合学习。'}</p>`;
+      html += `<div class="q-actions"><button class="btn accent" id="again">🔄 再测一次</button><button class="btn soft" id="back">返回</button></div>`;
+      card.innerHTML = html; wrap.appendChild(card);
+      $('#again').onclick = res.onAgain; $('#back').onclick = res.onBack;
+    }
+
+    function renderGrad() {
+      const box = el('div');
+      const opts = KB.levels.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+      box.innerHTML = `<div class="toolbar">
+        <div class="field"><label>结业级别</label><select id="gLevel">${opts}</select></div>
+        <div class="field"><label>题量 (5–30)</label><input type="number" id="gCount" value="12" min="5" max="30" style="width:90px" /></div>
+        <div class="field"><label>&nbsp;</label><button class="btn" id="gStart">🏆 开始结业测评</button></div>
+      </div>
+      <p class="muted">结业线 80%：达到即可晋升下一级，并颁发结业证书（虚拟勋章）。</p>`;
+      host.appendChild(box);
+      $('#gStart').onclick = () => {
+        const lvl = KB.levels.find(l => l.id === $('#gLevel').value) || KB.levels[0];
+        const units = lvl.cats.flatMap(cid => { const cat = KB.categories.find(c => c.id === cid); return cat ? cat.units : []; });
+        if (!units.length) { toast('该级别暂无对应考点库'); return; }
+        const n = Math.max(5, Math.min(30, parseInt($('#gCount').value) || 12));
+        const qs = [];
+        for (let i = 0; i < n; i++) { const u = rand(units); qs.push(buildQuestion(u, rand(u.words), rand(['listen','read','blank']))); }
+        runQuiz(host, qs, { label: '阶段结业 · ' + lvl.name, back: 'quiz', diagnose: (res) => renderGradReport(res, lvl), onAgain: () => $('#gStart').click() });
+      };
+    }
+    function renderGradReport(res, lvl) {
+      const wrap = res.wrap; wrap.innerHTML = '';
+      const pct = Math.round(res.correct / res.total * 100);
+      const pass = pct >= 80;
+      const card = el('div', 'q-card center');
+      let html = `<div style="font-size:54px">${pass ? '🏆' : '💪'}</div><h2 style="margin:6px 0">${esc(lvl.name)} 结业测评</h2>`;
+      html += `<p class="muted">共 ${res.total} 题，答对 ${res.correct} 题 · 成绩 ${pct}%</p>`;
+      html += `<div class="bar" style="margin:10px 0"><i style="width:${pct}%;background:${pass ? '#54C9A6' : '#FF6B9D'}"></i></div>`;
+      if (pass) html += `<div class="intro-q" style="background:var(--c-mint)">🎉 恭喜结业通过！获得「${esc(lvl.name)}」结业勋章，可升入下一级！</div>`;
+      else { const weakUnits = Object.keys(res.weak).map(findUnit).filter(Boolean).map(u => u.label); html += `<div class="intro-q" style="background:var(--c-accent)">🔁 未达 80% 达标线，再巩固：${esc(weakUnits.join('、') || '相关考点')}。加油，你一定行！</div>`; }
+      html += `<div class="q-actions"><button class="btn accent" id="again">🔄 再来一套</button><button class="btn soft" id="back">返回</button></div>`;
+      card.innerHTML = html; wrap.appendChild(card);
+      $('#again').onclick = res.onAgain; $('#back').onclick = res.onBack;
+    }
   };
 
   /* ====================== 十、文章阅读题 ====================== */
@@ -1226,64 +1531,473 @@
     };
   }
 
-  /* ====================== 座位系统（30 席 · 数据按席隔离 · 口令绑定） ====================== */
-  // 设计：每个座位 id（01–30）对应独立的 localStorage 命名空间 + 独立「本机绑定」标记。
-  // 口令明文存于 seats.js（静态方案软防护）：首开输对口令→本机绑定（免再输）；
-  // 换设备/清缓存/隐身需重输。真正一人一号需后端，当前静态方案无法做到。
-  let SEAT = { id: null };
-  const SEAT_NS = 'phonics_seat';   // 命名空间前缀
-  function seatBoundKey(id) { return SEAT_NS + id + '_bound'; }
-  function readSeatId() {
-    const m = (location.search || '').match(/[?&]seat=([0-9A-Za-z]+)/);
-    return m ? m[1].toUpperCase() : null;
-  }
-  function seatPwd(id) { const s = (window.SEATS || []).find(x => x.id === id); return s ? s.pwd : null; }
-  function isValidSeat(id) { return !!(window.SEATS || []).some(x => x.id === id); }
-  function isBound(id) { try { return localStorage.getItem(seatBoundKey(id)) === '1'; } catch (e) { return false; } }
-  function setBound(id) { try { localStorage.setItem(seatBoundKey(id), '1'); } catch (e) {} }
+  /* ====================== 十三、发音评测与纠音（M13-01 ~ M13-05） ====================== */
+  VIEWS.pronounce = function (c) {
+    const card = el('div', 'card');
+    card.innerHTML = `<div class="section-title" style="margin-top:0">🎙️ 发音评测与纠音</div>
+      <p class="muted">用「听标准音 → 孩子跟读 → 即时反馈」的方式练准发音。支持🎤麦克风识别（Chrome / Edge 最佳），也支持家长/自评三档，断网也能用。</p>
+      <div class="module-grid" id="pHub"></div>
+      <div id="pHost"></div>`;
+    c.appendChild(card);
+    const host = $('#pHost');
+    const hub = [
+      { id:'assess', icon:'🎤', name:'跟读评测', desc:'听标准音、跟读、给分与纠音（M13-01）' },
+      { id:'minimal', icon:'🔍', name:'易混纠音', desc:'最小对立对对比训练（M13-02）' },
+      { id:'mouth', icon:'👄', name:'口型指导', desc:'口型/舌位/送气图解（M13-03）' },
+      { id:'challenge', icon:'🎮', name:'发音闯关', desc:'单音→单词→句子三关（M13-04）' },
+      { id:'progress', icon:'📈', name:'进步追踪', desc:'发音准确度趋势报告（M13-05）' }
+    ];
+    const grid = $('#pHub');
+    const openers = { assess: renderAssess, minimal: renderMinimal, mouth: renderMouth, challenge: renderChallenge, progress: renderProgress };
+    hub.forEach(m => {
+      const b = el('button', 'module-card');
+      b.innerHTML = `<div class="mc-top"><div class="mc-ico" style="background:#E8743B22;color:#E8743B">${m.icon}</div></div><h3>${m.name}</h3><p>${m.desc}</p>`;
+      b.onclick = () => { host.innerHTML = ''; openers[m.id](host); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+      grid.appendChild(b);
+    });
 
-  // 入口调度：座位和密码输入已拆分到 gate.html；index.html 只负责「已绑定则进，未绑定/无座/非法则回 gate」
-  const doRedirect = (typeof window.__seatRedirect__ === 'function')
-    ? window.__seatRedirect__
-    : function (url) { location.replace(url); };
-  function checkSeatOrRedirect() {
-    const id = readSeatId();
-    if (!id || !isValidSeat(id) || !isBound(id)) {
-      const target = 'gate.html' + (id ? '?seat=' + encodeURIComponent(id) : '');
-      doRedirect(target);
-      return;
+    /* —— M13-01 跟读评测 —— */
+    function renderAssess(host) {
+      const box = el('div', 'card soft');
+      const catOpts = KB.categories.map(cat => `<option value="${cat.id}">${cat.icon} ${cat.name}</option>`).join('');
+      box.innerHTML = `<div class="section-title" style="margin-top:0;font-size:15px">🎤 跟读评测（M13-01）</div>
+        <div class="toolbar">
+          <div class="field"><label>练习范围</label><select id="aRange">${catOpts}</select></div>
+          <div class="field"><label>题量 (5–15)</label><input type="number" id="aCount" value="6" min="5" max="15" style="width:90px" /></div>
+          <div class="field"><label>&nbsp;</label><button class="btn accent" id="aStart">▶ 开始跟读</button></div>
+        </div>
+        <p class="muted" id="aMicTip">${micCaptureSupported() ? '🎤 可点「录下我的跟读」真实录音，录完对照标准音自评打分（100% 离线可用）。' + (micSupported() ? ' 部分浏览器还支持「自动辨音」自动给分（需联网）。' : '') : 'ℹ️ 当前环境不支持麦克风录音，请用「家长/自评」三档按钮给分（同样有效）。'}</p>
+        <div id="aHost"></div>`;
+      host.appendChild(box);
+      $('#aStart').onclick = () => {
+        const cat = KB.categories.find(c => c.id === $('#aRange').value) || KB.categories[0];
+        const n = Math.max(5, Math.min(15, parseInt($('#aCount').value) || 6));
+        const words = shuffle(cat.units).slice(0, Math.min(cat.units.length, n)).map(u => { const w = rand(u.words); return { w: w.w, sym: u.sym, ipa: u.ipa, unitLabel: u.label }; });
+        runAssess($('#aHost'), words);
+      };
     }
-    SEAT.id = id;
-    STORE_KEY = SEAT_NS + id + '_v1';
-    finishInit();
+    function runAssess(host, words) {
+      let idx = 0; const results = [];
+      const wrap = el('div', 'quiz-wrap'); host.innerHTML = ''; host.appendChild(wrap);
+      function render() {
+        wrap.innerHTML = '';
+        const item = words[idx];
+        const p = pronOf(item.sym);
+        const card = el('div', 'q-card center');
+        card.innerHTML = `<div class="qno" style="font-weight:900;color:var(--c-primary)">第 ${idx + 1} / ${words.length} 词</div>
+          <div class="q-word">${esc(item.w)}</div>
+          <button class="q-audio-btn" id="aPlay">🔊</button>
+          <div class="q-prompt">先听标准音，再大声跟读；可以录下自己的声音，对照标准音打分～</div>
+          <div class="row" style="justify-content:center;gap:8px;flex-wrap:wrap">
+            <button class="btn accent" id="aMic">🎤 录下我的跟读</button>
+            <button class="btn soft sm" id="aStt" style="display:none">🤖 自动辨音（需联网）</button>
+          </div>
+          <div id="aRecPanel" style="display:none;margin-top:8px">
+            <div class="rec-indicator" id="aRecDot"><span class="rec-dot"></span> 录音中…（读完点「停止并试听」）</div>
+            <div class="vol-bar"><div class="vol-fill" id="aVol"></div></div>
+            <button class="btn soft sm" id="aStop">⏹ 停止并试听</button>
+          </div>
+          <div id="aPlayPanel" style="display:none;margin-top:10px">
+            <div class="muted" style="margin-bottom:4px">👂 这是你刚才读的：</div>
+            <audio id="aMine" controls style="width:100%"></audio>
+            <button class="btn soft sm" id="aStd" style="margin-top:6px">🔊 再听标准音</button>
+          </div>
+          <div class="q-feedback" id="aRes" style="display:none"></div>
+          <div class="row" style="justify-content:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+            <button class="btn mint sm" data-s="92">🌟 准确</button>
+            <button class="btn soft sm" data-s="80">⚠️ 基本准确</button>
+            <button class="btn pink sm" data-s="55">🔴 需纠音</button>
+          </div>`;
+        wrap.appendChild(card);
+        $('#aPlay').onclick = () => speak(item.w);
+        setTimeout(() => speak(item.w), 200);
+        const res = $('#aRes');
+        function showScore(score, mode, heard) {
+          const g = pronGrade(score);
+          const extra = p ? `<div class="muted" style="margin-top:6px;font-weight:700">👄 纠音提示：${p.metaphor}。${p.errors[0] ? ' 常见错：' + p.errors[0].wrong + ' → ' + p.errors[0].fix : ''}</div>` : '';
+          res.className = 'q-feedback show ' + (g.c === 'ok' ? 'ok' : g.c === 'warn' ? '' : 'no');
+          res.innerHTML = `${g.emoji} 你的发音：<b>${score} 分（${g.t}）</b>${heard ? ' · 识别到：' + esc(heard) : ''}${extra}`;
+          logPron(item.w, item.sym, score, mode);
+          results.push({ w: item.w, score });
+          const nb = el('button', 'btn ' + (score >= 70 ? 'mint' : 'accent')); nb.textContent = (idx + 1 < words.length) ? '下一词 →' : '看结果 →';
+          nb.style.marginTop = '12px'; nb.onclick = () => { idx++; idx >= words.length ? summary() : render(); };
+          res.appendChild(nb);
+        }
+        $('#aMic').onclick = () => {
+          if (!micCaptureSupported()) {
+            toast('当前环境不支持麦克风录音（请用 Chrome / Edge，并通过 https 分享链接打开）');
+            return;
+          }
+          $('#aMic').style.display = 'none';
+          $('#aStt').style.display = 'none';
+          $('#aRecPanel').style.display = 'block';
+          $('#aVol').style.width = '0%';
+          recordUser({
+            duration: 4000,
+            onLevel: v => { const f = $('#aVol'); if (f) f.style.width = Math.round(v * 100) + '%'; },
+            onDone: url => {
+              $('#aRecPanel').style.display = 'none';
+              if (url) {
+                $('#aMine').src = url;
+                $('#aPlayPanel').style.display = 'block';
+                $('#aStt').style.display = micSupported() ? 'inline-block' : 'none';
+                toast('录好啦！对比标准音，给自己打个分吧～');
+              } else {
+                $('#aMic').style.display = '';
+                $('#aStt').style.display = micSupported() ? 'inline-block' : 'none';
+                toast('录音结束');
+              }
+            },
+            onErr: msg => {
+              $('#aRecPanel').style.display = 'none';
+              $('#aMic').style.display = '';
+              if (msg === 'insecure') toast('麦克风需在 https 安全链接下使用，请用分享链接打开而非本地文件');
+              else if (msg === 'denied') toast('麦克风权限被拒绝，请在地址栏允许麦克风后重试');
+              else if (msg === 'unsupported') toast('当前环境不支持麦克风录音，请用下方自评打分');
+              else toast('录音启动失败，请用下方自评打分');
+            }
+          });
+        };
+        $('#aStop').onclick = () => { if (recordUser._stop) recordUser._stop(); };
+        $('#aStd').onclick = () => speak(item.w);
+        $('#aStt').onclick = () => {
+          if (!micSupported()) { toast('本浏览器不支持自动辨音'); return; }
+          $('#aStt').disabled = true; $('#aStt').textContent = '🤖 辨音中…';
+          recognize((txt, st) => {
+            $('#aStt').disabled = false; $('#aStt').textContent = '🤖 自动辨音（需联网）';
+            if (st === 'ok' && txt) {
+              const sc = scoreFromText(item.w, txt);
+              showScore(sc, 'mic', txt);
+              toast('电脑识别到：' + txt + '（' + sc + ' 分）');
+            } else {
+              toast('自动辨音不可用（网络/浏览器限制），请自评');
+            }
+          });
+        };
+        wrap.querySelectorAll('.q-card .btn[data-s]').forEach(b => b.onclick = () => showScore(parseInt(b.dataset.s), 'self', null));
+      }
+      function summary() {
+        wrap.innerHTML = '';
+        const avg = results.length ? Math.round(results.reduce((a, b) => a + b.score, 0) / results.length) : 0;
+        const low = results.filter(r => r.score < 70).map(r => r.w);
+        const g = pronGrade(avg);
+        const card = el('div', 'q-card center');
+        let html = `<div style="font-size:54px">${g.emoji}</div><h2 style="margin:6px 0">跟读评测完成</h2>
+          <p class="muted">共 ${results.length} 词，平均 ${avg} 分（${g.t}）</p>`;
+        if (low.length) html += `<div class="intro-q" style="background:var(--c-accent)">🔴 建议重点练：${esc(low.join('、'))}。点开「口型指导」看每个音怎么发～</div>`;
+        else html += `<div class="intro-q" style="background:var(--c-mint)">🌟 发音很准啦！继续保持～</div>`;
+        html += `<div class="q-actions"><button class="btn accent" id="again">🔄 再来一组</button><button class="btn soft" id="back">返回</button></div>`;
+        card.innerHTML = html; wrap.appendChild(card);
+        $('#again').onclick = () => $('#aStart').click();
+        $('#back').onclick = () => { host.innerHTML = ''; renderAssess(host); };
+      }
+      render();
+    }
+
+    /* —— M13-02 易混音素纠音 —— */
+    function renderMinimal(host) {
+      const box = el('div', 'card soft');
+      const opts = (KB.minimalPairs || []).map(m => `<option value="${m.id}">${esc(m.contrast)}</option>`).join('');
+      box.innerHTML = `<div class="section-title" style="margin-top:0;font-size:15px">🔍 易混纠音（M13-02）</div>
+        <div class="toolbar"><div class="field"><label>易混音素对</label><select id="mSel">${opts}</select></div>
+        <div class="field"><label>&nbsp;</label><button class="btn accent" id="mStart">▶ 开始练习</button></div></div>
+        <div id="mHost"></div>`;
+      host.appendChild(box);
+      if (!opts) { $('#mHost').innerHTML = '<div class="empty"><div class="big">🔍</div>暂无易混音素数据。</div>'; return; }
+      $('#mStart').onclick = () => {
+        const mp = (KB.minimalPairs || []).find(x => x.id === $('#mSel').value) || KB.minimalPairs[0];
+        renderMinimalSet($('#mHost'), mp);
+      };
+    }
+    function renderMinimalSet(host, mp) {
+      host.innerHTML = '';
+      const head = el('div', 'rule-card');
+      head.innerHTML = `<div class="mnemonic">${esc(mp.contrast)}</div>` + mp.tips.map(t => `<div class="one">👄 ${esc(t)}</div>`).join('');
+      host.appendChild(head);
+      mp.pairs.forEach(pair => {
+        const row = el('div', 'list-row');
+        row.innerHTML = `<div class="lr-top"><div class="lr-q">最小对立对（只差一个音，声音不同意思就不同）</div></div>
+          <div class="row" style="justify-content:space-around;flex-wrap:wrap;gap:10px">
+            ${pair.map(wd => `<div class="pd-item" style="min-width:120px;text-align:center;padding:10px"><b style="font-size:18px">${esc(wd)}</b>
+              <div class="row" style="justify-content:center;margin-top:6px"><span class="wv" data-w="${esc(wd)}" style="cursor:pointer">🔊</span></div>
+              <div class="row" style="justify-content:center;margin-top:6px"><button class="btn sm mint" data-s="92">🌟准</button><button class="btn sm pink" data-s="55">🔴纠</button></div></div>`).join('')}
+          </div>`;
+        host.appendChild(row);
+        row.querySelectorAll('.wv').forEach(b => b.onclick = () => speak(b.dataset.w));
+        row.querySelectorAll('[data-s]').forEach(b => b.onclick = () => toast(b.dataset.s === '92' ? '🌟 读得准！' : '💡 再对比一下两个音的口型～'));
+      });
+      host.insertAdjacentHTML('beforeend', `<p class="muted" style="margin-top:10px">提示：两个词只有<b>一个音不同</b>。家长可带孩子先听标准音、再跟读，用上面的「准/纠」按钮记录。</p>`);
+    }
+
+    /* —— M13-03 口型指导 —— */
+    function renderMouth(host) {
+      const box = el('div', 'card soft');
+      const cards = (KB.pronunciation || []).map(p => {
+        const ex = p.examples.map(w => `<span class="chip gray" data-w="${esc(w)}" style="cursor:pointer">🔊 ${esc(w)}</span>`).join('');
+        return `<div class="unit-card" data-id="${esc(p.id)}" style="cursor:pointer">
+          <div class="uh"><div class="usym" style="color:#E8743B">${esc(p.sym)} ${esc(p.ipa)}</div><div class="uipa">${esc(p.name)}</div></div>
+          <div class="muted" style="font-weight:800;margin:4px 0">${esc(p.metaphor)}</div>
+          <div class="row">${ex}</div></div>`;
+      }).join('');
+      box.innerHTML = `<div class="section-title" style="margin-top:0;font-size:15px">👄 口型指导（M13-03）</div>
+        <p class="muted">点开任意音素，看口型 / 舌位 / 送气 / 常见错误 / 自我验证法。</p>
+        <div class="unit-list" id="mMouth">${cards}</div>`;
+      host.appendChild(box);
+      box.querySelectorAll('.wv').forEach(b => b.onclick = () => speak(b.dataset.w));
+      $('#mMouth').querySelectorAll('.unit-card').forEach(cardEl => cardEl.onclick = () => {
+        const p = (KB.pronunciation || []).find(x => x.id === cardEl.dataset.id); if (!p) return;
+        const errs = p.errors.map(e => `<div class="rule-ex"><span class="ex neg">❌ ${esc(e.wrong)}</span><span class="ex">✅ ${esc(e.fix)}</span></div>`).join('');
+        const ex = p.examples.map(w => `<span class="chip gray" data-w="${esc(w)}" style="cursor:pointer">🔊 ${esc(w)}</span>`).join('');
+        openModal(`<h3>👄 ${esc(p.name)} · ${esc(p.sym)} ${esc(p.ipa)}</h3>
+          <div class="rule-card" style="border-left-color:#E8743B">
+            <div class="mnemonic">${esc(p.metaphor)}</div>
+            <div class="section-title" style="font-size:13px;margin:10px 0 4px">👄 口型</div><div class="one">${esc(p.mouth)}</div>
+            <div class="section-title" style="font-size:13px;margin:10px 0 4px">👅 舌位</div><div class="one">${esc(p.tongue)}</div>
+            <div class="section-title" style="font-size:13px;margin:10px 0 4px">💨 送气 / 振动</div><div class="one">${esc(p.air)}</div>
+            <div class="section-title" style="font-size:13px;margin:10px 0 4px">🪞 自我验证法</div><div class="one">${esc(p.confirm)}</div>
+            <div class="section-title" style="font-size:13px;margin:10px 0 4px">⚠️ 常见错误</div>${errs}
+            <div class="section-title" style="font-size:13px;margin:10px 0 4px">🔊 例词（点听发音）</div><div class="row">${ex}</div>
+            <div class="q-actions"><button class="btn soft" id="mclose">关闭</button></div>
+          </div>`);
+        $('#mclose').onclick = closeModal;
+        document.querySelectorAll('#modalBox [data-w]').forEach(b => b.onclick = () => speak(b.dataset.w));
+      });
+    }
+
+    /* —— M13-04 发音闯关 —— */
+    function renderChallenge(host) {
+      const box = el('div', 'card soft');
+      box.innerHTML = `<div class="section-title" style="margin-top:0;font-size:15px">🎮 发音闯关（M13-04）</div>
+        <p class="muted">三关递进：① 单音 ② 单词 ③ 句子。每关按发音评分得星，满星通关得勋章。</p>
+        <div class="q-actions"><button class="btn accent" id="cStart">🚀 开始闯关</button></div>
+        <div id="cHost"></div>`;
+      host.appendChild(box);
+      $('#cStart').onclick = () => runChallenge($('#cHost'));
+    }
+    function runChallenge(host) {
+      const stages = [
+        { name: '第1关 · 单音', items: (KB.pronChallenges.phonemes || []).map(s => ({ text: s, isPhoneme: true })) },
+        { name: '第2关 · 单词', items: (KB.pronChallenges.words || []).map(w => ({ text: w })) },
+        { name: '第3关 · 句子', items: (KB.pronChallenges.sentences || []).map(s => ({ text: s })) }
+      ];
+      let si = 0, ii = 0, stars = 0, total = 0;
+      const wrap = el('div', 'quiz-wrap'); host.innerHTML = ''; host.appendChild(wrap);
+      function render() {
+        wrap.innerHTML = '';
+        const st = stages[si]; const it = st.items[ii];
+        const card = el('div', 'q-card center');
+        card.innerHTML = `<div class="qno" style="font-weight:900;color:var(--c-primary)">${esc(st.name)} · 第 ${ii + 1}/${st.items.length} 项</div>
+          <div class="q-word">${esc(it.text)}</div>
+          <button class="q-audio-btn" id="cPlay">🔊</button>
+          <div class="q-prompt">听标准音，大声跟读这一${it.isPhoneme ? '个音' : (si === 2 ? '句话' : '个词')}！</div>
+          <div class="row" style="justify-content:center;gap:8px;flex-wrap:wrap">
+            <button class="btn accent" id="cMic">🎤 麦克风跟读</button>
+            <button class="btn mint sm" data-s="92">🌟 准确</button>
+            <button class="btn soft sm" data-s="80">⚠️ 基本</button>
+            <button class="btn pink sm" data-s="55">🔴 纠音</button>
+          </div>
+          <div class="q-feedback" id="cRes" style="display:none"></div>`;
+        wrap.appendChild(card);
+        $('#cPlay').onclick = () => speak(it.text);
+        setTimeout(() => speak(it.text), 200);
+        function gain(score) {
+          total++; if (score >= 70) stars++;
+          const g = pronGrade(score);
+          const res = $('#cRes'); res.className = 'q-feedback show ' + (g.c === 'ok' ? 'ok' : g.c === 'warn' ? '' : 'no');
+          res.innerHTML = `${g.emoji} ${score} 分（${g.t}）` + (score < 70 ? ' · 重试一次或看口型指导 💪' : ' · 真棒！⭐');
+          logPron(it.text, '', score, 'self');
+          const nb = el('button', 'btn mint'); nb.textContent = '下一关项 →'; nb.style.marginTop = '12px';
+          nb.onclick = () => { ii++; if (ii >= st.items.length) { si++; ii = 0; if (si >= stages.length) return finish(); } render(); };
+          res.appendChild(nb);
+        }
+        $('#cMic').onclick = () => {
+          if (!micSupported()) { toast('本浏览器不支持麦克风，点自评按钮'); return; }
+          $('#cMic').textContent = '🎙️ 聆听…'; $('#cMic').disabled = true;
+          recognize((txt, stt) => { $('#cMic').textContent = '🎤 麦克风跟读'; $('#cMic').disabled = false; if (stt === 'ok' && txt) gain(scoreFromText(it.text, txt)); else toast('没听清，用自评按钮'); });
+        };
+        wrap.querySelectorAll('.q-card .btn[data-s]').forEach(b => b.onclick = () => gain(parseInt(b.dataset.s)));
+      }
+      function finish() {
+        wrap.innerHTML = '';
+        const pct = total ? Math.round(stars / total * 100) : 0;
+        const medal = stars === total ? '🎖️ 发音小百灵' : (pct >= 80 ? '🌟 发音小能手' : '💪 继续加油');
+        const card = el('div', 'q-card center');
+        card.innerHTML = `<div style="font-size:54px">${stars === total ? '🏆' : '🎮'}</div>
+          <h2 style="margin:6px 0">闯关完成！</h2>
+          <p class="muted">三关共 ${total} 项，得星 ${stars}/${total}（${pct}%）</p>
+          <div class="intro-q" style="background:var(--c-mint)">🏅 获得称号：<b>${medal}</b></div>
+          <div class="q-actions"><button class="btn accent" id="again">🔄 再闯一次</button><button class="btn soft" id="back">返回</button></div>`;
+        wrap.appendChild(card);
+        $('#again').onclick = () => runChallenge(host);
+        $('#back').onclick = () => { host.innerHTML = ''; renderChallenge(host); };
+      }
+      render();
+    }
+
+    /* —— M13-05 进步追踪 —— */
+    function renderProgress(host) {
+      const box = el('div', 'card soft');
+      const recs = state.pronScores || [];
+      if (!recs.length) { box.innerHTML = `<div class="section-title" style="margin-top:0;font-size:15px">📈 进步追踪（M13-05）</div><div class="empty"><div class="big">🎙️</div>还没有发音记录，去「跟读评测」或「发音闯关」练一练吧～</div>`; host.appendChild(box); return; }
+      const now = new Date();
+      function avgSince(days) { const cut = new Date(now); cut.setDate(cut.getDate() - days); const rs = recs.filter(r => new Date(r.date) >= cut); return rs.length ? Math.round(rs.reduce((a, b) => a + b.score, 0) / rs.length) : null; }
+      const last7 = avgSince(7), last30 = avgSince(30);
+      const bySym = {};
+      recs.forEach(r => { if (!r.sym) return; const o = bySym[r.sym] || (bySym[r.sym] = { n: 0, sum: 0 }); o.n++; o.sum += r.score; });
+      const stuck = Object.keys(bySym).filter(s => bySym[s].n >= 2 && bySym[s].sum / bySym[s].n < 70).map(s => s);
+      const mastered = Object.keys(bySym).filter(s => bySym[s].n >= 2 && bySym[s].sum / bySym[s].n >= 90).map(s => s);
+      let html = `<div class="section-title" style="margin-top:0;font-size:15px">📈 进步追踪（M13-05）</div>`;
+      html += `<div class="row" style="gap:10px;flex-wrap:wrap">
+        <div class="checkin-cell ${last7 != null ? 'on' : ''}"><div class="cc-ico">⭐</div><div class="cc-lab">近 7 天平均<br><b>${last7 != null ? last7 + ' 分' : '—'}</b></div></div>
+        <div class="checkin-cell ${last30 != null ? 'on' : ''}"><div class="cc-ico">📅</div><div class="cc-lab">近 30 天平均<br><b>${last30 != null ? last30 + ' 分' : '—'}</b></div></div>
+        <div class="checkin-cell"><div class="cc-ico">📊</div><div class="cc-lab">总记录<br><b>${recs.length} 次</b></div></div></div>`;
+      if (mastered.length) html += `<div class="row" style="margin-top:10px"><span class="chip mint">✅ 已掌握音素：${esc(mastered.join('、'))}</span></div>`;
+      if (stuck.length) html += `<div class="row" style="margin-top:8px"><span class="chip warn">🔴 顽固音（重点练）：${esc(stuck.join('、'))}</span></div>`;
+      html += `<div class="intro-q" style="background:var(--c-primary);margin-top:12px">👨‍👩‍👧 家长报告：宝贝发音${last7 != null && last30 != null && last7 >= last30 ? '稳步提升 👍' : '持续练习中 💪'}。${stuck.length ? '下周重点：' + esc(stuck.join('、')) + '（看口型指导 + 照镜子练习）。' : '继续保持，多读多练！'}</div>`;
+      html += `<div class="q-actions"><button class="btn soft" id="pClear">🧹 清空记录</button></div>`;
+      box.innerHTML = html; host.appendChild(box);
+      $('#pClear').onclick = () => { if (window.confirm('确定清空全部发音记录？')) { state.pronScores = []; save(); renderProgress(host); } };
+    }
+  };
+
+  /* ---------- 学习路线：区块渲染辅助（板块内容 → HTML） ---------- */
+  const PHASE_META = {
+    pre:   { icon: '🔍', c: '#3C7DFF', one: '准备与热身' },
+    learn: { icon: '📖', c: '#FF7A45', one: '核心规则与例词' },
+    review:{ icon: '🔁', c: '#2BB673', one: '巩固练习' },
+    quiz:  { icon: '🏆', c: '#9B5DE5', one: '自测与答案' }
+  };
+  const PHASE_ORDER = ['pre', 'learn', 'review', 'quiz'];
+
+  function renderPhaseBlock(b) {
+    switch (b.k) {
+      case 'txt':   return `<p class="ph-txt">${esc(b.body)}</p>`;
+      case 'task':  return `<div class="ph-task">🎯 <span>${esc(b.body)}</span></div>`;
+      case 'steps': return `<ol class="ph-steps">${b.items.map(i => `<li>${esc(i)}</li>`).join('')}</ol>`;
+      case 'rule':  return `<div class="ph-rule"><div class="ph-rule-sym">${esc(b.sym || '')}</div><div class="ph-rule-body"><div class="ph-rule-t">${esc(b.title || '')}</div><div class="ph-rule-d">${esc(b.body)}</div></div></div>`;
+      case 'words': return `<div class="ph-words"><div class="ph-words-h">${esc(b.sym || '例词')}</div><div class="word-grid">${b.items.map(w => `<div class="wchip" data-w="${esc(w[0])}"><b>${esc(w[0])}</b><span>${esc(w[1])}</span><i>${esc(w[2])}</i><span class="wchip-spk">🔊</span></div>`).join('')}</div></div>`;
+      case 'pairs': return `<div class="ph-pair-wrap"><div class="ph-pair"><div class="pp" data-w="${esc(b.a[0])}"><b>${esc(b.a[0])}</b><span>${esc(b.a[1])}</span><i>${esc(b.a[2])}</i><span class="wchip-spk">🔊</span></div><span class="pp-vs">vs</span><div class="pp" data-w="${esc(b.b[0])}"><b>${esc(b.b[0])}</b><span>${esc(b.b[1])}</span><i>${esc(b.b[2])}</i><span class="wchip-spk">🔊</span></div></div><div class="ph-pair-note">💡 ${esc(b.note || '')}</div></div>`;
+      case 'sent':  return `<div class="ph-sent" data-w="${esc(b.en)}"><span class="ph-sent-en">${esc(b.en)}</span>${b.ipa ? `<span class="ph-sent-ipa">${esc(b.ipa)}</span>` : ''}<button class="ph-spk" type="button" aria-label="听发音">🔊</button></div>`;
+      case 'quiz':  return `<div class="ph-quiz"><div class="ph-q">${esc(b.q)}</div><div class="ph-opts">${b.opts.map(o => `<button class="ph-opt" type="button">${esc(o)}</button>`).join('')}</div><button class="ph-show-ans" type="button">显示答案</button><div class="ph-ans" hidden><b>答案：${esc(b.ans)}</b><span>${esc(b.why)}</span></div></div>`;
+      default: return '';
+    }
+  }
+  function phaseSectionsHtml(L) {
+    return PHASE_ORDER.map(k => {
+      const ph = L.phases[k]; if (!ph) return '';
+      const m = PHASE_META[k];
+      return `<section class="ph-section" style="--pc:${m.c}">
+        <div class="ph-head"><span class="ph-ico">${m.icon}</span><span class="ph-h-t">${esc(ph.title)}</span></div>
+        <div class="ph-body">${ph.blocks.map(renderPhaseBlock).join('')}</div>
+      </section>`;
+    }).join('');
   }
 
-  function renderSeatBadge() {
-    const b = $('#seatBadge'); if (!b) return;
-    b.textContent = '🪑 座位 ' + (SEAT.id || '??');
-    b.style.display = '';
-    b.title = '当前座位 · 数据已按座位隔离';
-  }
+  /* ---------- 学习路线：导航枢纽（8 关入口） ---------- */
+  VIEWS.curriculum = function (c) {
+    const card = el('div', 'card');
+    card.innerHTML = `<div class="section-title" style="margin-top:0">🗺️ 拼读宝石大冒险 · 学习路线</div>
+      <p class="muted">跟着吉祥物 🦖 豆豆 Rex，按 <b>预习 → 学习 → 复习 → 评测</b> 四步走，集齐 8 颗拼读宝石，点亮「流利阅读」魔法大门！点击任意关卡，进入<b>专属学习页</b>查看具体教学内容（字母、发音规则、例词例句、练习题与答案）。</p>
+      <div class="gem-map" id="gemMap"></div>
+      <div class="guide-grid" id="guideGrid"></div>`;
+    c.appendChild(card);
 
-  // 座位解锁后的真正初始化：加载本座位独立数据 → 昵称 → 徽标 → 进入路由
-  function finishInit() {
-    state = load();
-    initNick();
-    renderSeatBadge();
-    const start = (location.hash || '').replace(/^#\/?/, '').trim();
-    navigate(NAV_META[start] ? start : 'home', true);
-  }
+    const map = $('#gemMap');
+    const grid = $('#guideGrid');
+    CURRICULUM.forEach(L => {
+      const node = el('div', 'gem-node');
+      node.setAttribute('data-lesson', L.id);
+      node.style.setProperty('--gc', L.color);
+      node.innerHTML = `<div class="gem">💎</div><div class="gn-no">第${L.no}关</div><div class="gn-t">${esc(L.title)}</div>`;
+      map.appendChild(node);
 
-  /* ====================== 初始化 ====================== */
+      const lc = el('div', 'lesson-card');
+      lc.style.setProperty('--lc', L.color);
+      const outline = PHASE_ORDER.map(k => `<div class="lc-stage"><b>${PHASE_META[k].icon} ${esc(L.phases[k].title)}</b><span>${esc(PHASE_META[k].one)}</span></div>`).join('');
+      lc.innerHTML = `<div class="lesson-head">
+          <span class="lesson-badge">第 ${L.no} 关</span>
+          <span class="lesson-cat" style="background:${L.color}">${esc(L.cat)}</span>
+          <span class="lesson-scene">${esc(L.scene)}</span>
+        </div>
+        <div class="lesson-title">${esc(L.title)}</div>
+        <div class="lesson-target">🎯 ${esc(L.goal)}</div>
+        <div class="lc-outline">${outline}</div>
+        <div class="guide-tip">🦖 ${esc(L.tip)}</div>
+        <div class="guide-foot">
+          <button class="btn accent sm" data-lesson="${esc(L.id)}">进入第 ${L.no} 关 →</button>
+          <button class="btn soft sm" data-nav="pronounce">🎙️ 发音评测</button>
+        </div>`;
+      grid.appendChild(lc);
+    });
+
+    card.addEventListener('click', e => {
+      const ln = e.target.closest('[data-lesson]');
+      if (ln) { navigate('curriculumLesson', ln.getAttribute('data-lesson')); return; }
+      const nv = e.target.closest('[data-nav]');
+      if (nv) { e.preventDefault(); navigate(nv.getAttribute('data-nav')); }
+    });
+  };
+
+  /* ---------- 学习路线：每关专属学习页（四阶段具体内容） ---------- */
+  VIEWS.curriculumLesson = function (c, id) {
+    const L = CURRICULUM.find(x => x.id === id) || CURRICULUM[0];
+    const idx = CURRICULUM.indexOf(L);
+    const prev = idx > 0 ? CURRICULUM[idx - 1] : null;
+    const next = idx < CURRICULUM.length - 1 ? CURRICULUM[idx + 1] : null;
+    const card = el('div', 'card lesson-page');
+    card.style.setProperty('--lc', L.color);
+    card.innerHTML = `
+      <div class="lp-top">
+        <button class="lp-back" data-nav="curriculum">← 返回学习路线</button>
+        <span class="lp-progress">第 ${L.no} / ${CURRICULUM.length} 关 · ${esc(L.catEn)}</span>
+      </div>
+      <div class="lp-head">
+        <div class="lp-badge">第 ${L.no} 关</div>
+        <div class="lp-cat" style="background:${L.color}">${esc(L.cat)}</div>
+        <div class="lp-scene">${esc(L.scene)}</div>
+      </div>
+      <h2 class="lp-title">${esc(L.title)}</h2>
+      <div class="lp-goal">🎯 ${esc(L.goal)}</div>
+      <div class="lp-phases">${phaseSectionsHtml(L)}</div>
+      <div class="lp-tip">🦖 ${esc(L.tip)}</div>
+      <div class="lp-nav">
+        ${prev ? `<button class="btn soft sm" data-lesson="${prev.id}">← 上一关</button>` : `<span></span>`}
+        <div class="lp-nav-mid">
+          <button class="btn soft sm" data-nav="pronounce">🎙️ 发音评测</button>
+          <button class="btn accent sm" data-nav="${esc(L.go)}">${esc(L.goLabel)} →</button>
+        </div>
+        ${next ? `<button class="btn soft sm" data-lesson="${next.id}">下一关 →</button>` : `<span></span>`}
+      </div>`;
+    c.appendChild(card);
+
+    // 局部交互：进入其他关 / 测评选项高亮 / 显示答案（data-nav 交由全局委托处理）
+    card.addEventListener('click', e => {
+      const ln = e.target.closest('[data-lesson]');
+      if (ln) { navigate('curriculumLesson', ln.getAttribute('data-lesson')); return; }
+      const opt = e.target.closest('.ph-opt');
+      if (opt) { const q = opt.closest('.ph-quiz'); q.querySelectorAll('.ph-opt').forEach(o => o.classList.remove('sel')); opt.classList.add('sel'); return; }
+      const sa = e.target.closest('.ph-show-ans');
+      if (sa) { const ans = sa.parentElement.querySelector('.ph-ans'); if (ans) { ans.hidden = false; sa.hidden = true; } return; }
+      const spk = e.target.closest('[data-w]');
+      if (spk) { unlockAudio(); speak(spk.getAttribute('data-w'), 'en-US'); return; }
+    });
+  };
+
+  /* ====================== 初始化（开放访问 · 开箱即用） ====================== */
   function init() {
-    // 全局事件委托：任何带 data-nav 的元素（侧边栏按钮、底部导航、首页模块卡，
-    // 包括动态渲染出来的卡片）点击后都切换到对应的独立路由，且内容整体替换、不累加。
+    // 全局事件委托：任何带 data-nav 的元素（侧边栏/底部导航/首页模块卡）点击后切换到对应独立路由
     document.addEventListener('click', function (e) {
       const t = e.target.closest('[data-nav]');
       if (t) { e.preventDefault(); navigate(t.getAttribute('data-nav')); }
     });
-    // 入口校验：必须在 gate.html 完成座位绑定才能进入主应用
-    checkSeatOrRedirect();
+    // 开放访问：直接进入主应用，无需口令、无需联网、无需额外配置
+    state = load();
+    initNick();
+    const start = (location.hash || '').replace(/^#\/?/, '').trim();
+    navigate(NAV_META[start] ? start : 'home', true);
+    // 移动端：等待首次用户手势解锁系统媒体声音（iOS Safari / Android Chrome 自动播放策略）
+    bindAudioUnlock();
+    showAudioHint();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
