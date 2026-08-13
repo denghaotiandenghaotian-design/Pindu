@@ -29,7 +29,9 @@
     checkin: { t: '打卡学习', s: '听·说·读·写 成长档案' },
     pronounce:{ t: '发音评测', s: '跟读评测 · 易混纠音 · 口型指导 · 闯关' },
     curriculum:{ t: '学习路线', s: '8课大冒险 · 分步操作指引 · 关键提示' },
-    curriculumLesson:{ t: '课程详情', s: '每关专属学习页 · 预习/学习/复习/评测' }
+    curriculumLesson:{ t: '课程详情', s: '每关专属学习页 · 预习/学习/复习/评测' },
+    books:   { t: '绘本跟读', s: '一年级~六年级 · 剑桥彩虹30本 · 听读练' },
+    book:    { t: '绘本详情', s: '原文跟读 · 金句 · 词汇 · 阅读题' }
   };
 
   const MODULES = [
@@ -46,7 +48,8 @@
     { id:'lecture', no:'11', name:'名师讲课',    icon:'👩‍🏫', color:'#2BB3C0', desc:'课前导入 + 名师课程·播放·章节字幕' },
     { id:'checkin', no:'12', name:'打卡学习',   icon:'🌟', color:'#FF9F43', desc:'听/说/读/写 成长周报' },
     { id:'pronounce',no:'13', name:'发音评测', icon:'🎙️', color:'#E8743B', desc:'跟读评测/易混纠音/口型指导/闯关' },
-    { id:'curriculum',no:'14', name:'学习路线', icon:'🗺️', color:'#9B6BF2', desc:'8课大冒险·分步操作指引·关键提示' }
+    { id:'curriculum',no:'14', name:'学习路线', icon:'🗺️', color:'#9B6BF2', desc:'8课大冒险·分步操作指引·关键提示' },
+    { id:'books',   no:'15', name:'绘本跟读', icon:'📚', color:'#E8743B', desc:'一年级~六年级·剑桥彩虹30本·听读练' }
   ];
 
   const EMOJI = {apple:'🍎',ant:'🐜',ax:'🪓',ball:'⚽',bus:'🚌',book:'📚',cat:'🐱',cup:'🥤',cap:'🧢',dog:'🐶',duck:'🦆',desk:'🪑',egg:'🥚',elephant:'🐘',pen:'🖊️',fish:'🐟',fan:'🌀',fox:'🦊',goat:'🐐',gate:'🚪',girl:'👧',hat:'🎩',hen:'🐔',house:'🏠',igloo:'🛖',pig:'🐷',jump:'🦘',jet:'✈️',jam:'🍓',kite:'🪁',key:'🔑',king:'👑',lion:'🦁',leg:'🦵',leaf:'🍃',monkey:'🐵',milk:'🥛',map:'🗺️',nest:'🪺',nose:'👃',net:'🥅',octopus:'🐙',ox:'🐂',pencil:'✏️',pan:'🍳',queen:'👸',quiet:'🤫',rabbit:'🐰',red:'🔴',rain:'🌧️',sun:'☀️',snake:'🐍',six:'6️⃣',tiger:'🐯',ten:'🔟',top:'🔝',umbrella:'☂️',up:'⬆️',bug:'🐛',van:'🚐',violin:'🎻',vest:'🦺',water:'💧',worm:'🪱',web:'🕸️',box:'📦',yellow:'💛',yes:'✅',yoyo:'🪀',zebra:'🦓',zoo:'🦁',zip:'🤐',ship:'🚢',shoe:'👟',chip:'🍟',chair:'🪑',watch:'⌚',three:'3️⃣',thumb:'👍',this:'👉',whale:'🐋',wheel:'🛞',white:'⚪',lock:'🔒',sock:'🧦',cake:'🍰',name:'🏷️',bike:'🚲',time:'⏰',note:'📝',rope:'🪢',bone:'🦴',cube:'🧊',cute:'😊',mule:'🐴',mail:'✉️',play:'🎮',bee:'🐝',tree:'🌳',boat:'🚤',coat:'🧥',snow:'❄️',moon:'🌕',food:'🍔',car:'🚗',star:'⭐',farm:'🚜',fork:'🍴',corn:'🌽',horse:'🐴',her:'👩',bird:'🐦',turn:'🔄',mat:'🟫',glad:'😀',match:'🤝',pit:'🕳️',dig:'⛏️',fit:'💪',cape:'🦸',tap:'👆',tape:'📼',sheep:'🐑',sweet:'🍬',trip:'🧳',born:'👶',warm:'🔥',happy:'😄',glad:'😀'};
@@ -2028,6 +2031,122 @@
       if (sa) { const ans = sa.parentElement.querySelector('.ph-ans'); if (ans) { ans.hidden = false; sa.hidden = true; } return; }
       const spk = e.target.closest('[data-w]');
       if (spk) { unlockAudio(); speak(spk.getAttribute('data-w'), 'en-US'); return; }
+    });
+  };
+
+  /* ====================== 绘本跟读模块（一年级~六年级 · 剑桥彩虹30本） ====================== */
+  const BOOK_META = {
+    1:{ label:'一年级', color:'#FF9F43' }, 2:{ label:'二年级', color:'#54C9A6' },
+    3:{ label:'三年级', color:'#5B8DEF' }, 4:{ label:'四年级', color:'#9B6BF2' },
+    5:{ label:'五年级', color:'#E8743B' }, 6:{ label:'六年级', color:'#FF6B9D' }
+  };
+  function allBooks() { return (typeof BOOKS !== 'undefined' && BOOKS) ? BOOKS : []; }
+  function booksByGrade(g) { return allBooks().filter(b => b.grade === g); }
+  VIEWS.books = function (c) {
+    const card = el('div', 'card books-page');
+    card.innerHTML = `<div class="section-title" style="margin-top:0">📚 绘本跟读 · 一年级~六年级</div>
+      <p class="muted">精选 <b>剑桥彩虹分级阅读（Cambridge Reading Adventures）</b>30 本绘本，按年级递增难度。每本含 <b>原文跟读 · 金句 · 重点词汇 · 阅读题</b>。点书名进入，逐句听读、闯关答题。</p>
+      <div class="grade-tabs" id="gradeTabs">${[1,2,3,4,5,6].map(g => `<button class="grade-pill${g===1?' active':''}" data-grade="${g}" style="--gc:${BOOK_META[g].color}">${BOOK_META[g].label}</button>`).join('')}</div>
+      <div class="book-grid" id="bookGrid"></div>`;
+    c.appendChild(card);
+    const grid = $('#bookGrid');
+    function renderGrade(g) {
+      $$('.grade-pill').forEach(p => p.classList.toggle('active', p.dataset.grade == String(g)));
+      const list = booksByGrade(g);
+      grid.innerHTML = list.length ? list.map(b => `<div class="book-card" data-book="${esc(b.id)}" style="--bc:${BOOK_META[g].color}">
+        <div class="bc-top"><span class="bc-band">${esc(b.band)}</span><span class="bc-theme">${esc(b.theme)}</span></div>
+        <div class="bc-title">${esc(b.title)}</div>
+        <div class="bc-cn">${esc(b.titleCN)}</div>
+        <div class="bc-foot">
+          <button class="btn soft xs" data-spk-text="${esc(b.text.join(' '))}">🔊 听全文</button>
+          <span class="bc-enter">进入 →</span>
+        </div></div>`).join('') : `<div class="muted">该年级暂无绘本</div>`;
+    }
+    renderGrade(1);
+    card.addEventListener('click', e => {
+      const gp = e.target.closest('[data-grade]'); if (gp) { renderGrade(Number(gp.dataset.grade)); return; }
+      const spk = e.target.closest('[data-spk-text]'); if (spk) { unlockAudio(); speak(spk.getAttribute('data-spk-text'), 'en-US'); return; }
+      const bc = e.target.closest('[data-book]'); if (bc) { navigate('book', bc.getAttribute('data-book')); return; }
+    });
+  };
+  VIEWS.book = function (c, id) {
+    const list = allBooks();
+    const b = list.find(x => x.id === id) || list[0];
+    if (!b) { c.appendChild(el('div', 'card', '<p class="muted">未找到该绘本</p>')); return; }
+    const g = b.grade;
+    const gc = (BOOK_META[g] || {}).color || '#E8743B';
+    const card = el('div', 'card book-detail');
+    card.style.setProperty('--bc', gc);
+    const TYPE_LABEL = { comprehension:'理解', vocabulary:'词汇', extension:'拓展' };
+    const quizHtml = (b.quiz || []).map((q, i) => {
+      const isOpen = !q.opts;
+      const optsHtml = isOpen ? `<div class="qz-open">✍️ 开放题：口头或书写回答，完成后点下方看提示</div>`
+        : `<div class="qz-opts">${q.opts.map((o, oi) => `<button class="qz-opt" type="button" data-oi="${oi}">${esc(o)}</button>`).join('')}</div>`;
+      return `<div class="qz-card" data-qi="${i}">
+        <div class="qz-q"><span class="qz-no">${i+1}</span>${esc(q.q)}</div>
+        <div class="qz-type t-${q.type}">${TYPE_LABEL[q.type] || q.type}</div>
+        ${optsHtml}
+        <div class="qz-why" hidden>${esc(q.why || '')}</div>
+      </div>`;
+    }).join('');
+    card.innerHTML = `
+      <div class="lp-top">
+        <button class="lp-back" data-nav="books">← 返回绘本列表</button>
+        <span class="lp-progress">${BOOK_META[g].label} · ${esc(b.band)}</span>
+      </div>
+      <div class="bd-head">
+        <div class="bd-title">${esc(b.title)}</div>
+        <div class="bd-cn">${esc(b.titleCN)}</div>
+        <div class="bd-meta">🏷️ ${esc(b.band)} · 🎨 ${esc(b.theme)} · 📚 ${esc(b.publisher)}</div>
+        <div class="bd-author">✍️ ${esc(b.author)}</div>
+        <button class="btn accent sm bd-listen" data-spk-text="${esc(b.text.join(' '))}">🔊 听全文示范</button>
+      </div>
+      <div class="bd-sec">
+        <div class="bd-sec-h">📖 绘本原文（逐句跟读）</div>
+        <div class="bd-ori">${b.text.map(t => `<div class="bd-sent" data-w="${esc(t)}"><span>${esc(t)}</span><button class="ph-spk" type="button" aria-label="听发音">🔊</button></div>`).join('')}</div>
+        <div class="bd-tip">💡 跟读四步：听原音 → 逐句模仿 → 分角色朗读 → 读后答题</div>
+      </div>
+      <div class="bd-sec">
+        <div class="bd-sec-h">🗣️ 跟读指导</div>
+        <div class="bd-guide">${esc(b.guidance || '')}</div>
+      </div>
+      <div class="bd-sec">
+        <div class="bd-sec-h">⭐ 金句（重点句型 / 精彩表达）</div>
+        <div class="bd-golden">${b.golden.map(s => `<div class="golden-line" data-w="${esc(s)}"><span>${esc(s)}</span><button class="ph-spk" type="button">🔊</button></div>`).join('')}</div>
+      </div>
+      <div class="bd-sec">
+        <div class="bd-sec-h">🔤 重点词汇（音标 · 释义 · 例句）</div>
+        <div class="voc-grid">${b.vocab.map(v => `<div class="voc-card">
+          <div class="voc-top" data-w="${esc(v.w)}"><b class="voc-w">${esc(v.w)}</b><span class="voc-ph">${esc(v.ph)}</span><button class="ph-spk" type="button">🔊</button></div>
+          <div class="voc-zh">${esc(v.zh)}</div>
+          <div class="voc-ex" data-w="${esc(v.ex)}">📝 ${esc(v.ex)} <button class="ph-spk xs" type="button">🔊</button></div>
+        </div>`).join('')}</div>
+      </div>
+      <div class="bd-sec">
+        <div class="bd-sec-h">❓ 阅读题目（理解 · 词汇 · 拓展）</div>
+        <div class="quiz-score" id="quizScore" hidden></div>
+        <div class="bd-quiz">${quizHtml}</div>
+      </div>`;
+    c.appendChild(card);
+    let answered = 0, correct = 0; const total = (b.quiz || []).length;
+    card.addEventListener('click', e => {
+      const spk = e.target.closest('[data-w]'); if (spk) { unlockAudio(); speak(spk.getAttribute('data-w'), 'en-US'); return; }
+      const spk2 = e.target.closest('[data-spk-text]'); if (spk2) { unlockAudio(); speak(spk2.getAttribute('data-spk-text'), 'en-US'); return; }
+      const opt = e.target.closest('.qz-opt'); if (opt) {
+        const qc = opt.closest('.qz-card'); if (qc.classList.contains('done')) return;
+        const qi = Number(qc.dataset.qi); const q = (b.quiz || [])[qi];
+        qc.classList.add('done');
+        const chosen = Number(opt.dataset.oi);
+        qc.querySelectorAll('.qz-opt').forEach((o, oi) => { o.classList.add('locked'); if (oi === q.ans) o.classList.add('correct'); });
+        if (q.ans != null) { if (chosen === q.ans) { opt.classList.add('correct'); correct++; } else { opt.classList.add('wrong'); } }
+        answered++;
+        const why = qc.querySelector('.qz-why'); if (why) why.hidden = false;
+        const sc = $('#quizScore'); if (sc) {
+          sc.hidden = false;
+          sc.innerHTML = `✅ 已答 ${answered}/${total} · 答对 ${correct}` + (answered === total ? ` · ${correct === total ? '🎉 全对！' : '正确率 ' + Math.round(correct/total*100) + '%'}` : '');
+        }
+        return;
+      }
     });
   };
 
