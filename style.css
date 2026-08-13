@@ -20,6 +20,7 @@
   --bg-2:#FFF1E3;
   --surface:#FFFFFF;
   --surface-2:#FFF6EE;
+  --bg-soft:#FBF3EA;          /* 浅暖底，用于卡片内分区 */
   --ink:#2D3142;              /* 主文字 深 */
   --ink-2:#6B7180;            /* 次文字 */
   --ink-3:#9AA0AE;            /* 弱文字 */
@@ -450,4 +451,152 @@ hr.div{border:none;border-top:1px dashed var(--border);margin:18px 0;}
   color:var(--ink-3);font-size:13px;font-weight:800;text-align:center;line-height:1.6;padding:8px;}
 .qr-fallback span{font-size:11.5px;font-weight:600;color:var(--ink-3);opacity:.85;}
 .sponsor-tip{font-size:12.5px;font-weight:800;color:var(--c-pink);}
+
+/* ============ 模块十三 · 发音评测与纠音 ============ */
+#pHub{margin-top:6px;}
+.q-audio-btn.listening{animation:pulseMic 1s ease-in-out infinite;background:linear-gradient(135deg,var(--c-accent),var(--c-pink));}
+@keyframes pulseMic{0%{transform:scale(1);box-shadow:0 0 0 0 rgba(255,107,157,.5);}50%{transform:scale(1.08);box-shadow:0 0 0 12px rgba(255,107,157,0);}100%{transform:scale(1);box-shadow:0 0 0 0 rgba(255,107,157,0);}}
+.pron-flag{display:inline-block;font-size:12px;font-weight:900;padding:3px 10px;border-radius:var(--r-pill);background:#E8743B22;color:#E8743B;}
+/* —— 麦克风真实录音：录音指示 + 实时音量条 —— */
+.rec-indicator{display:inline-flex;align-items:center;gap:8px;font-weight:800;color:#E8743B;background:#E8743B14;padding:8px 12px;border-radius:var(--r-pill);font-size:14px;}
+.rec-dot{width:11px;height:11px;border-radius:50%;background:#ff4d4f;animation:recBlink 1s steps(1) infinite;box-shadow:0 0 0 4px rgba(255,77,79,.18);}
+@keyframes recBlink{50%{opacity:.25;}}
+.vol-bar{height:12px;border-radius:99px;background:var(--border);overflow:hidden;margin:10px auto 6px;max-width:320px;}
+.vol-fill{height:100%;width:0%;border-radius:99px;background:linear-gradient(90deg,#5B8DEF,#E8743B,#ff4d4f);transition:width .06s linear;}
+.minimal-pair{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;}
+.minimal-word{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:12px 14px;min-width:120px;text-align:center;}
+.minimal-word b{font-size:18px;font-weight:900;}
+.minimal-word .row{justify-content:center;margin-top:6px;}
+.pron-grade{font-size:15px;font-weight:900;}
+
+/* ====================== 新增板块：拼读宝石大冒险 · 学习路线 ====================== */
+.gem-map{display:flex;gap:10px;overflow-x:auto;padding:6px 2px 12px;margin-top:10px;-webkit-overflow-scrolling:touch;}
+.gem-map::-webkit-scrollbar{height:6px;}
+.gem-map::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px;}
+.gem-node{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:3px;padding:11px 12px;border-radius:var(--r-md);background:var(--surface);border:1px solid var(--border);min-width:84px;cursor:pointer;transition:.16s;}
+.gem-node:hover{transform:translateY(-2px);box-shadow:var(--sh-sm);border-color:transparent;}
+.gem-node .gem{font-size:24px;}
+.gem-node .gn-no{font-size:11px;font-weight:900;color:var(--ink-3);}
+.gem-node .gn-t{font-size:11.5px;font-weight:800;color:var(--ink-2);text-align:center;line-height:1.25;}
+
+.guide-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:14px;}
+@media(max-width:760px){.guide-grid{grid-template-columns:1fr;}}
+
+.lesson-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:16px 16px 14px;box-shadow:var(--sh-card);}
+.lesson-card .lesson-head{display:flex;align-items:center;gap:10px;}
+.lesson-badge{font-size:11px;font-weight:900;color:#fff;background:linear-gradient(135deg,var(--c-accent),var(--c-accent-d));padding:4px 11px;border-radius:var(--r-pill);box-shadow:var(--sh-xs);}
+.lesson-scene{font-size:14.5px;font-weight:900;color:var(--ink);}
+.lesson-gem{margin-left:auto;font-size:22px;}
+.lesson-title{font-size:16.5px;font-weight:900;margin-top:11px;color:var(--ink);}
+.lesson-target{font-size:12.5px;color:var(--ink-2);font-weight:700;margin:4px 0 10px;}
+
+.guide-step{display:flex;gap:10px;padding:9px 0;border-top:1px dashed var(--border);}
+.guide-step:first-of-type{border-top:none;}
+.gs-num{flex:0 0 30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:900;font-size:14px;background:linear-gradient(135deg,var(--c-primary),var(--c-purple));color:#fff;box-shadow:var(--sh-xs);}
+.gs-body{flex:1;min-width:0;}
+.gs-stage{font-size:13px;font-weight:900;color:var(--ink);}
+.gs-act{font-size:12.5px;color:var(--ink-2);font-weight:600;margin-top:2px;line-height:1.5;}
+.gs-hint{display:inline-block;margin-top:6px;font-size:11.5px;font-weight:800;color:var(--c-accent-d);background:var(--warn-bg);border-radius:var(--r-sm);padding:5px 9px;line-height:1.45;}
+.gs-hint::before{content:"💡 ";}
+
+.guide-tip{margin-top:12px;background:var(--info-bg);border-left:4px solid var(--c-primary);border-radius:var(--r-md);padding:10px 12px;font-size:12.5px;font-weight:800;color:var(--info);line-height:1.5;}
+.guide-foot{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+/* 学习路线板：关卡节点顶部强调色 + 卡片分类标签 + 四阶段概览 */
+.gem-node{border-top:3px solid var(--gc,var(--border));}
+.lesson-card .lesson-cat{color:#fff;border-radius:var(--r-pill);padding:2px 10px;font-size:11px;font-weight:900;}
+.lc-outline{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin:10px 0 2px;}
+.lc-stage{background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--r-md);padding:7px 9px;}
+.lc-stage b{display:block;font-size:12px;font-weight:900;color:var(--ink-2);}
+.lc-stage span{font-size:11px;color:var(--ink-3);}
+
+/* ====================== 课程专属学习页（curriculumLesson） ====================== */
+.lesson-page{--lc:#3C7DFF;}
+.lp-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;}
+.lp-back{background:var(--surface);border:1px solid var(--border);color:var(--ink-2);border-radius:var(--r-pill);padding:7px 14px;font-size:13px;font-weight:800;cursor:pointer;transition:.16s;}
+.lp-back:hover{border-color:var(--lc);color:var(--lc);transform:translateY(-1px);}
+.lp-progress{font-size:12px;font-weight:900;color:var(--ink-3);background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--r-pill);padding:5px 12px;}
+.lp-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.lp-badge{font-size:12px;font-weight:900;color:#fff;background:var(--lc);border-radius:var(--r-pill);padding:4px 12px;}
+.lp-cat{color:#fff;border-radius:var(--r-pill);padding:4px 12px;font-size:12px;font-weight:900;}
+.lp-scene{font-size:15px;font-weight:800;color:var(--ink-2);}
+.lp-title{font-size:23px;font-weight:900;color:var(--ink);margin:10px 0 8px;line-height:1.3;}
+.lp-goal{background:var(--info-bg);border-left:4px solid var(--lc);border-radius:var(--r-md);padding:11px 13px;font-size:13.5px;font-weight:800;color:var(--info);line-height:1.55;margin-bottom:14px;}
+
+.lp-phases{display:flex;flex-direction:column;gap:14px;}
+.ph-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--sh-card);}
+.ph-head{display:flex;align-items:center;gap:9px;padding:11px 15px;background:var(--bg-soft);border-bottom:1px solid var(--border);}
+.ph-ico{font-size:17px;}
+.ph-h-t{font-size:15px;font-weight:900;color:var(--pc);}
+.ph-body{padding:13px 15px;display:flex;flex-direction:column;gap:11px;}
+
+.ph-txt{margin:0;font-size:13.5px;line-height:1.65;color:var(--ink-2);}
+.ph-task{display:flex;gap:7px;align-items:flex-start;background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--r-md);padding:9px 11px;font-size:13px;font-weight:700;color:var(--ink-2);line-height:1.55;}
+.ph-steps{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px;}
+.ph-steps li{font-size:13.5px;line-height:1.6;color:var(--ink-2);}
+
+.ph-rule{display:flex;gap:11px;align-items:flex-start;background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--r-md);padding:11px 13px;}
+.ph-rule-sym{font-size:14px;font-weight:900;color:#fff;background:var(--pc);border-radius:var(--r-pill);padding:5px 11px;white-space:nowrap;}
+.ph-rule-t{font-size:13.5px;font-weight:900;color:var(--ink);margin-bottom:3px;}
+.ph-rule-d{font-size:13px;line-height:1.6;color:var(--ink-2);}
+
+.ph-words-h{font-size:12.5px;font-weight:900;color:var(--pc);margin-bottom:7px;}
+.word-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;}
+.wchip{display:flex;flex-direction:column;align-items:flex-start;gap:1px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:7px 10px;position:relative;cursor:pointer;transition:transform .12s, box-shadow .12s, border-color .12s;}
+.wchip:hover{transform:translateY(-1px);box-shadow:var(--sh-sm);border-color:var(--c-primary);}
+.wchip:active{transform:scale(.97);}
+.wchip b{font-size:14px;font-weight:900;color:var(--ink);}
+.wchip span{font-size:12px;color:var(--pc);font-weight:800;}
+.wchip i{font-size:11.5px;color:var(--ink-3);font-style:normal;}
+.wchip .wchip-spk{position:absolute;top:5px;right:8px;font-size:12px;color:var(--c-primary);opacity:.5;transition:opacity .12s;}
+.wchip:hover .wchip-spk{opacity:1;}
+
+.ph-pair-wrap{background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--r-md);padding:11px 13px;}
+.ph-pair{display:flex;align-items:center;gap:10px;justify-content:center;flex-wrap:wrap;}
+.pp{display:flex;flex-direction:column;align-items:center;gap:1px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:8px 14px;min-width:96px;position:relative;cursor:pointer;transition:transform .12s, box-shadow .12s, border-color .12s;}
+.pp:hover{transform:translateY(-1px);box-shadow:var(--sh-sm);border-color:var(--c-primary);}
+.pp:active{transform:scale(.97);}
+.pp b{font-size:15px;font-weight:900;color:var(--ink);}
+.pp span{font-size:12px;color:var(--pc);font-weight:800;}
+.pp i{font-size:11.5px;color:var(--ink-3);font-style:normal;}
+.pp .wchip-spk{position:absolute;top:4px;right:7px;font-size:12px;color:var(--c-primary);opacity:.5;transition:opacity .12s;}
+.pp:hover .wchip-spk{opacity:1;}
+.pp-vs{font-size:13px;font-weight:900;color:var(--ink-3);}
+.ph-pair-note{margin-top:8px;font-size:12.5px;font-weight:800;color:var(--info);text-align:center;}
+
+/* 可点读句子 / 短文 */
+.ph-sent{display:flex;align-items:center;gap:10px;background:var(--bg-soft);border:1.5px solid var(--border);border-radius:var(--r-md);padding:11px 14px;margin:8px 0;cursor:pointer;transition:transform .12s, box-shadow .12s, border-color .12s;}
+.ph-sent:hover{transform:translateY(-1px);box-shadow:var(--sh-sm);border-color:var(--c-primary);}
+.ph-sent:active{transform:scale(.99);}
+.ph-sent-en{font-size:15px;font-weight:800;color:var(--ink);flex:1;line-height:1.5;}
+.ph-sent-ipa{font-size:12px;font-weight:700;color:var(--c-accent);flex:none;}
+.ph-spk{border:none;background:var(--c-primary);color:#fff;border-radius:999px;width:34px;height:34px;font-size:15px;cursor:pointer;flex:none;box-shadow:0 3px 10px rgba(91,141,239,.35);transition:transform .12s;}
+.ph-spk:hover{transform:scale(1.08);}
+.ph-spk:active{transform:scale(.95);}
+
+.ph-quiz{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:11px 13px;}
+.ph-q{font-size:13.5px;font-weight:800;color:var(--ink);line-height:1.5;margin-bottom:9px;}
+.ph-opts{display:flex;flex-wrap:wrap;gap:8px;}
+.ph-opt{background:var(--bg-soft);border:1.5px solid var(--border);border-radius:var(--r-md);padding:7px 14px;font-size:13px;font-weight:800;color:var(--ink-2);cursor:pointer;transition:.14s;}
+.ph-opt:hover{border-color:var(--pc);}
+.ph-opt.sel{background:var(--pc);border-color:var(--pc);color:#fff;}
+.ph-show-ans{margin-top:9px;background:transparent;border:1px dashed var(--pc);color:var(--pc);border-radius:var(--r-pill);padding:5px 13px;font-size:12px;font-weight:800;cursor:pointer;}
+.ph-ans{margin-top:9px;background:var(--bg-soft);border-radius:var(--r-md);padding:9px 11px;font-size:13px;line-height:1.55;color:var(--ink-2);}
+.ph-ans b{color:var(--pc);}
+
+/* ============ 字母点读台（点击字母播放发音） ============ */
+.letter-board{margin-bottom:14px;}
+.letter-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(58px, 1fr));gap:8px;margin-top:10px;}
+.letter-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:var(--bg-soft);border:1.5px solid var(--border);border-radius:var(--r-md);padding:9px 0;cursor:pointer;transition:transform .12s, box-shadow .12s, border-color .12s, background .12s;}
+.letter-tile:hover{border-color:var(--c-primary);}
+.letter-tile:active,.letter-tile.tapped{transform:translateY(1px) scale(.96);background:color-mix(in srgb, var(--c-primary) 16%, var(--surface));border-color:var(--c-primary);box-shadow:0 4px 12px rgba(91,141,239,.28);}
+.lt-ch{font-size:21px;font-weight:900;color:var(--ink);line-height:1;}
+.lt-sym{font-size:13px;font-weight:800;color:var(--c-accent);line-height:1;}
+
+/* ============ 移动端声音开启提示 ============ */
+.audio-hint{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(22px);background:var(--c-primary);color:#fff;font-weight:900;font-size:13px;padding:9px 16px;border-radius:999px;box-shadow:0 6px 18px rgba(91,141,239,.4);opacity:0;pointer-events:none;transition:opacity .35s, transform .35s;z-index:60;white-space:nowrap;}
+.audio-hint.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+.lp-tip{margin-top:16px;background:var(--info-bg);border-left:4px solid var(--c-primary);border-radius:var(--r-md);padding:11px 13px;font-size:13px;font-weight:800;color:var(--info);line-height:1.55;}
+.lp-nav{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:16px;flex-wrap:wrap;}
+.lp-nav-mid{display:flex;gap:8px;flex-wrap:wrap;}
 
