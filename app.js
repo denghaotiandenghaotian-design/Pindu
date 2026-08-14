@@ -123,6 +123,12 @@
   }
   /* —— 微信内置浏览器检测 —— */
   function isWeChat() { return /MicroMessenger/i.test(navigator.userAgent || ''); }
+  /* —— 触摸设备（手机 / Pad）检测：这类设备 speechSynthesis 常静默失败，且 <audio> 播放
+     必须在用户手势内触发，故直接走「手势内同步 TTS」最稳 —— */
+  function isTouchDevice() {
+    return !!('ontouchstart' in window) || (navigator.maxTouchPoints > 0) ||
+      /iPad|iPhone|iPod|Android|Kindle|Tablet|Mobile/i.test(navigator.userAgent || '');
+  }
 
   /* —— 在线 TTS 音频兜底引擎（微信 / 无 speechSynthesis 时使用） —— */
   let _ttsAudio = null, _ttsQueue = [], _ttsPlaying = false;
@@ -169,8 +175,9 @@
     lang = lang || 'en-US';
     if (!text) return;
     unlockAudio();                                       // 每次发声前都确保音频上下文已唤醒（移动端关键）
-    // 微信内置浏览器 / 无 Web Speech API → 用在线 TTS 音频兜底
-    if (isWeChat() || !('speechSynthesis' in window)) { playTtsAudio(text, lang); return; }
+    // 微信 / 触摸设备（手机·Pad）/ 无 Web Speech API → 直接在用户手势内同步走在线 TTS，
+    // 避免 700ms 看门狗触发时已过手势、被自动播放策略拦截导致「静默失败 / 误报网络」。
+    if (isWeChat() || isTouchDevice() || !('speechSynthesis' in window)) { playTtsAudio(text, lang); return; }
     try { playWebSpeech(text, lang, 0); }
     catch (e) { playTtsAudio(text, lang); }
   }
@@ -482,7 +489,7 @@
     if (q.type === 'listen' || q.type === 'read') {
       const ab = el('button', 'q-audio-btn'); ab.textContent = '🔊'; ab.onclick = () => speak(q.spoken); card.appendChild(ab);
       if (q.type === 'read') { const ww = el('div', 'q-word'); ww.textContent = q.word; card.appendChild(ww); }
-      setTimeout(() => speak(q.spoken), 250);
+      if (!isTouchDevice()) setTimeout(() => speak(q.spoken), 250);
     }
     const pr = el('div', 'q-prompt'); pr.textContent = q.prompt; card.appendChild(pr);
     const opts = el('div', 'q-options');
@@ -1679,7 +1686,7 @@
           </div>`;
         wrap.appendChild(card);
         $('#aPlay').onclick = () => speak(item.w);
-        setTimeout(() => speak(item.w), 200);
+        if (!isTouchDevice()) setTimeout(() => speak(item.w), 200);
         const res = $('#aRes');
         function showScore(score, mode, heard) {
           const g = pronGrade(score);
@@ -1882,7 +1889,7 @@
         wrap.appendChild(card);
         unlockAudio();
         $('#cPlay').onclick = () => { unlockAudio(); speak(it.text); };
-        setTimeout(() => speak(it.text), 200);
+        if (!isTouchDevice()) setTimeout(() => speak(it.text), 200);
         function gain(score) {
           total++; if (score >= 70) stars++;
           const g = pronGrade(score);
