@@ -123,12 +123,6 @@
   }
   /* —— 微信内置浏览器检测 —— */
   function isWeChat() { return /MicroMessenger/i.test(navigator.userAgent || ''); }
-  /* —— 触摸设备（手机 / Pad）检测：这类设备 speechSynthesis 常静默失败，且 <audio> 播放
-     必须在用户手势内触发，故直接走「手势内同步 TTS」最稳 —— */
-  function isTouchDevice() {
-    return !!('ontouchstart' in window) || (navigator.maxTouchPoints > 0) ||
-      /iPad|iPhone|iPod|Android|Kindle|Tablet|Mobile/i.test(navigator.userAgent || '');
-  }
 
   /* —— 在线 TTS 音频兜底引擎（微信 / 无 speechSynthesis 时使用） —— */
   let _ttsAudio = null, _ttsQueue = [], _ttsPlaying = false;
@@ -143,28 +137,17 @@
       const a = _ttsAudio;
       const urls = seg.zh ? [ttsUrlBaidu(seg.t, 'zh')] : [ttsUrlBaidu(seg.t, 'en'), ttsUrlYoudao(seg.t)];
       let i = 0;
-      const playOne = () => {
-        a.onplaying = a.onended = a.onerror = a.onstalled = null;
-        if (i >= urls.length) {                     // 所有源都加载失败 → 播下一句；若已是最后一句则提示
-          if (!_ttsQueue.length) { try { toast('当前网络环境下未能播放发音，请检查网络后重试'); } catch (e) {} }
-          ttsPlayNext(); return;
-        }
-        let playing = false;
-        a.onplaying = () => { playing = true; };
+      const attempt = () => {
+        if (i >= urls.length) { ttsPlayNext(); return; }   // 所有源都失败 → 播下一句
+        a.onerror = () => { i++; attempt(); };
         a.onended = () => { ttsPlayNext(); };
-        // 仅「资源真的加载失败(onerror)」才跳下一源；iOS / 微信常出现 play() 先 reject、随后实际播放，
-        // 故忽略 play 的 reject，改以 onplaying / onended 判定，避免被误判为「网络失败」。
-        a.onerror = () => { if (playing) return; i++; playOne(); };
-        a.onstalled = () => { if (playing) return; };
         a.src = urls[i++];
-        const doPlay = () => { try { const p = a.play(); if (p && p.catch) p.catch(function () {}); } catch (e) {} };
-        // 微信要求 WeixinJSBridgeReady 之后才能播放远程音频；未就绪则等待，避免 play 被拒。
-        if (isWeChat() && typeof WeixinJSBridge === 'undefined') {
-          document.addEventListener('WeixinJSBridgeReady', doPlay, false);
-          setTimeout(doPlay, 1500);                 // 兜底：部分微信版本已就绪但未触发该事件
-        } else { doPlay(); }
+        try {
+          const p = a.play();
+          if (p && p.catch) p.catch(() => { i++; attempt(); });
+        } catch (e) { i++; attempt(); }
       };
-      playOne();
+      attempt();
     } catch (e) { ttsPlayNext(); }
   }
   function playTtsAudio(text, lang) {
@@ -182,44 +165,21 @@
   function speak(text, lang) {
     lang = lang || 'en-US';
     if (!text) return;
-    unlockAudio();                                       // 每次发声前都确保音频上下文已唤醒（移动端关键）
-    // 微信内置浏览器阉割了 speechSynthesis → 只能走在线 TTS（已做 JSBridge 等待 + iOS play 兼容）。
-    if (isWeChat()) { playTtsAudio(text, lang); return; }
-    // 普通浏览器（含手机 / Pad 的 Safari、Chrome）→ 优先系统原生 TTS：离线可用、最稳，
-    // 仅当原生也静默失败时才降级到在线 TTS。
-    if ('speechSynthesis' in window) { try { playWebSpeech(text, lang, 0); return; } catch (e) {} }
-    playTtsAudio(text, lang);
-  }
-  /* 用 Web Speech API 朗读；移动端（iOS Safari / Android Chrome）常有「调用了却不发声」的
-     静默失败，故采用：① 每次重试新建 utterance ② 看门狗检测未 onstart 则重试 ③ 多次失败
-     自动降级到在线 TTS 兜底，保证手机/Pad 一定能出声。 */
-  function playWebSpeech(text, lang, attempt) {
-    const MAX = 2;
-    try { window.speechSynthesis.cancel(); } catch (e) {}
-    const u = new SpeechSynthesisUtterance(String(text));
-    u.lang = lang; u.rate = 0.85; u.pitch = 1.05; u.volume = 1;
-    const v = pickVoice(); if (v) { u.voice = v; }          // 指定英文语音，避免读成中文腔
-    let didPlay = false, done = false;
-    u.onstart = function () { didPlay = true; };
-    u.onboundary = function () { didPlay = true; };          // Chrome 偶尔不触发 onstart，以 onboundary 兜底
-    u.onend = function () { done = true; };
-    u.onerror = function () {
-      if (done) return;
-      if (attempt < MAX) { try { playWebSpeech(text, lang, attempt + 1); } catch (e) { playTtsAudio(text, lang); } }
-      else { playTtsAudio(text, lang); }
-    };
-    try { window.speechSynthesis.speak(u); }
-    catch (e) { playTtsAudio(text, lang); return; }
-    // 看门狗：仅当「确实完全没开始播放」才重试。以 speaking / pending / didPlay 综合判定，
-    // 避免把「正在播放但 onstart 未触发」误判为静默失败而 cancel 打断——这正是桌面/Chrome 无声的根因。
-    setTimeout(function () {
-      if (done) return;
-      let active = false;
-      try { active = window.speechSynthesis.speaking || window.speechSynthesis.pending; } catch (e) {}
-      if (didPlay || active) return;                         // 已发声或正在播 → 正常，不重试
-      if (attempt < MAX) { try { playWebSpeech(text, lang, attempt + 1); } catch (e) { playTtsAudio(text, lang); } }
-      else { playTtsAudio(text, lang); }
-    }, 900);
+    // 微信内置浏览器 / 无 Web Speech API → 用在线 TTS 音频兜底
+    if (isWeChat() || !('speechSynthesis' in window)) { playTtsAudio(text, lang); return; }
+    try {
+      window.speechSynthesis.cancel();                 // 先清空队列，避免连点堆叠
+      const u = new SpeechSynthesisUtterance(String(text));
+      u.lang = lang; u.rate = 0.85; u.pitch = 1.05; u.volume = 1;
+      const v = pickVoice(); if (v) u.voice = v;        // 指定英文语音，避免读成中文腔
+      window.speechSynthesis.speak(u);
+      // iOS/Safari 已知 bug：首句偶尔被立刻截断而不发声 → 320ms 后若仍未在播则补播一次
+      const retry = setTimeout(function () {
+        try { if (!window.speechSynthesis.speaking) window.speechSynthesis.speak(u); } catch (e) {}
+      }, 320);
+      u.onend = function () { clearTimeout(retry); };
+      u.onerror = function () { clearTimeout(retry); };
+    } catch (e) { playTtsAudio(text, lang); }
   }
   if ('speechSynthesis' in window) {
     loadVoices();
@@ -504,7 +464,7 @@
     if (q.type === 'listen' || q.type === 'read') {
       const ab = el('button', 'q-audio-btn'); ab.textContent = '🔊'; ab.onclick = () => speak(q.spoken); card.appendChild(ab);
       if (q.type === 'read') { const ww = el('div', 'q-word'); ww.textContent = q.word; card.appendChild(ww); }
-      if (!isTouchDevice()) setTimeout(() => speak(q.spoken), 250);
+      setTimeout(() => speak(q.spoken), 250);
     }
     const pr = el('div', 'q-prompt'); pr.textContent = q.prompt; card.appendChild(pr);
     const opts = el('div', 'q-options');
@@ -1701,7 +1661,7 @@
           </div>`;
         wrap.appendChild(card);
         $('#aPlay').onclick = () => speak(item.w);
-        if (!isTouchDevice()) setTimeout(() => speak(item.w), 200);
+        setTimeout(() => speak(item.w), 200);
         const res = $('#aRes');
         function showScore(score, mode, heard) {
           const g = pronGrade(score);
@@ -1865,13 +1825,11 @@
       host.appendChild(box);
       $('#cStart').onclick = () => runChallenge($('#cHost'));
     }
-    // 单音关：TTS 无法读 IPA 符号，改用「示范词」发声（如 ă→apple），保证每关都能听到标准音
-    const PHONEME_DEMO = { 'ă':'apple','ĕ':'egg','ĭ':'igloo','ŏ':'octopus','ŭ':'umbrella','ā':'ace','ē':'eat','ī':'ice','ō':'open','th':'three','sh':'sheep','ch':'chair','r':'red','l':'leaf','v':'van','w':'web' };
     function runChallenge(host) {
       const stages = [
-        { name: '第1关 · 单音', items: (KB.pronChallenges.phonemes || []).map(s => ({ display: s, text: PHONEME_DEMO[s] || s, isPhoneme: true })) },
-        { name: '第2关 · 单词', items: (KB.pronChallenges.words || []).map(w => ({ display: w, text: w })) },
-        { name: '第3关 · 句子', items: (KB.pronChallenges.sentences || []).map(s => ({ display: s, text: s })) }
+        { name: '第1关 · 单音', items: (KB.pronChallenges.phonemes || []).map(s => ({ text: s, isPhoneme: true })) },
+        { name: '第2关 · 单词', items: (KB.pronChallenges.words || []).map(w => ({ text: w })) },
+        { name: '第3关 · 句子', items: (KB.pronChallenges.sentences || []).map(s => ({ text: s })) }
       ];
       let si = 0, ii = 0, stars = 0, total = 0;
       const wrap = el('div', 'quiz-wrap'); host.innerHTML = ''; host.appendChild(wrap);
@@ -1880,31 +1838,19 @@
         const st = stages[si]; const it = st.items[ii];
         const card = el('div', 'q-card center');
         card.innerHTML = `<div class="qno" style="font-weight:900;color:var(--c-primary)">${esc(st.name)} · 第 ${ii + 1}/${st.items.length} 项</div>
-          <div class="q-word">${esc(it.display)}</div>
+          <div class="q-word">${esc(it.text)}</div>
           <button class="q-audio-btn" id="cPlay">🔊</button>
-          <div class="q-prompt">${it.isPhoneme ? '这是 <b>' + esc(it.display) + '</b> 的音，听示范词「' + esc(it.text) + '」跟读～' : '听标准音，大声跟读这一' + (si === 2 ? '句话' : '个词') + '！'}</div>
+          <div class="q-prompt">听标准音，大声跟读这一${it.isPhoneme ? '个音' : (si === 2 ? '句话' : '个词')}！</div>
           <div class="row" style="justify-content:center;gap:8px;flex-wrap:wrap">
-            <button class="btn accent" id="cMic">🎤 录下我的跟读</button>
-            ${micSupported() ? '<button class="btn soft sm" id="cStt">🤖 自动辨音（需联网）</button>' : ''}
+            <button class="btn accent" id="cMic">🎤 麦克风跟读</button>
             <button class="btn mint sm" data-s="92">🌟 准确</button>
             <button class="btn soft sm" data-s="80">⚠️ 基本</button>
             <button class="btn pink sm" data-s="55">🔴 纠音</button>
           </div>
-          <div id="cRecPanel" style="display:none;margin-top:8px">
-            <div class="rec-indicator" id="cRecDot"><span class="rec-dot"></span> 录音中…（读完点「停止并试听」）</div>
-            <div class="vol-bar"><div class="vol-fill" id="cVol"></div></div>
-            <button class="btn soft sm" id="cStop">⏹ 停止并试听</button>
-          </div>
-          <div id="cPlayPanel" style="display:none;margin-top:10px">
-            <div class="muted" style="margin-bottom:4px">👂 这是你刚才读的：</div>
-            <audio id="cMine" controls style="width:100%"></audio>
-            <button class="btn soft sm" id="cStd" style="margin-top:6px">🔊 再听标准音</button>
-          </div>
           <div class="q-feedback" id="cRes" style="display:none"></div>`;
         wrap.appendChild(card);
-        unlockAudio();
-        $('#cPlay').onclick = () => { unlockAudio(); speak(it.text); };
-        if (!isTouchDevice()) setTimeout(() => speak(it.text), 200);
+        $('#cPlay').onclick = () => speak(it.text);
+        setTimeout(() => speak(it.text), 200);
         function gain(score) {
           total++; if (score >= 70) stars++;
           const g = pronGrade(score);
@@ -1916,40 +1862,9 @@
           res.appendChild(nb);
         }
         $('#cMic').onclick = () => {
-          if (!micCaptureSupported()) { toast('当前环境不支持麦克风录音（请用 Chrome / Edge，并通过 https 分享链接打开）；也可直接点自评按钮打分'); return; }
-          $('#cMic').style.display = 'none';
-          $('#cRecPanel').style.display = 'block';
-          $('#cVol').style.width = '0%';
-          recordUser({
-            duration: 4000,
-            onLevel: v => { const f = $('#cVol'); if (f) f.style.width = Math.round(v * 100) + '%'; },
-            onDone: url => {
-              $('#cRecPanel').style.display = 'none';
-              if (url) {
-                $('#cMine').src = url;
-                $('#cPlayPanel').style.display = 'block';
-                toast('录好啦！对比标准音，给自己打个分吧～');
-              } else { $('#cMic').style.display = ''; toast('录音结束'); }
-            },
-            onErr: msg => {
-              $('#cRecPanel').style.display = 'none';
-              $('#cMic').style.display = '';
-              if (msg === 'insecure') toast('麦克风需在 https 安全链接下使用，请用分享链接打开而非本地文件');
-              else if (msg === 'denied') toast('麦克风权限被拒绝，请在地址栏允许麦克风后重试');
-              else toast('录音启动失败，请用下方自评打分');
-            }
-          });
-        };
-        $('#cStop').onclick = () => { if (recordUser._stop) recordUser._stop(); };
-        $('#cStd').onclick = () => speak(it.text);
-        const cstt = $('#cStt');
-        if (cstt) cstt.onclick = () => {
-          cstt.disabled = true; cstt.textContent = '🤖 辨音中…';
-          recognize((txt, stt) => {
-            cstt.disabled = false; cstt.textContent = '🤖 自动辨音（需联网）';
-            if (stt === 'ok' && txt) { gain(scoreFromText(it.text, txt)); toast('电脑识别到：' + txt); }
-            else toast('自动辨音不可用（网络/浏览器限制），请自评');
-          });
+          if (!micSupported()) { toast('本浏览器不支持麦克风，点自评按钮'); return; }
+          $('#cMic').textContent = '🎙️ 聆听…'; $('#cMic').disabled = true;
+          recognize((txt, stt) => { $('#cMic').textContent = '🎤 麦克风跟读'; $('#cMic').disabled = false; if (stt === 'ok' && txt) gain(scoreFromText(it.text, txt)); else toast('没听清，用自评按钮'); });
         };
         wrap.querySelectorAll('.q-card .btn[data-s]').forEach(b => b.onclick = () => gain(parseInt(b.dataset.s)));
       }
