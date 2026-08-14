@@ -138,7 +138,10 @@
       const urls = seg.zh ? [ttsUrlBaidu(seg.t, 'zh')] : [ttsUrlBaidu(seg.t, 'en'), ttsUrlYoudao(seg.t)];
       let i = 0;
       const attempt = () => {
-        if (i >= urls.length) { ttsPlayNext(); return; }   // 所有源都失败 → 播下一句
+        if (i >= urls.length) {                     // 所有源都失败 → 播下一句；若已是最后一句则提示
+          if (!_ttsQueue.length) { try { toast('当前网络环境下未能播放发音，请检查网络后重试'); } catch (e) {} }
+          ttsPlayNext(); return;
+        }
         a.onerror = () => { i++; attempt(); };
         a.onended = () => { ttsPlayNext(); };
         a.src = urls[i++];
@@ -165,21 +168,36 @@
   function speak(text, lang) {
     lang = lang || 'en-US';
     if (!text) return;
+    unlockAudio();                                       // 每次发声前都确保音频上下文已唤醒（移动端关键）
     // 微信内置浏览器 / 无 Web Speech API → 用在线 TTS 音频兜底
     if (isWeChat() || !('speechSynthesis' in window)) { playTtsAudio(text, lang); return; }
-    try {
-      window.speechSynthesis.cancel();                 // 先清空队列，避免连点堆叠
-      const u = new SpeechSynthesisUtterance(String(text));
-      u.lang = lang; u.rate = 0.85; u.pitch = 1.05; u.volume = 1;
-      const v = pickVoice(); if (v) u.voice = v;        // 指定英文语音，避免读成中文腔
-      window.speechSynthesis.speak(u);
-      // iOS/Safari 已知 bug：首句偶尔被立刻截断而不发声 → 320ms 后若仍未在播则补播一次
-      const retry = setTimeout(function () {
-        try { if (!window.speechSynthesis.speaking) window.speechSynthesis.speak(u); } catch (e) {}
-      }, 320);
-      u.onend = function () { clearTimeout(retry); };
-      u.onerror = function () { clearTimeout(retry); };
-    } catch (e) { playTtsAudio(text, lang); }
+    try { playWebSpeech(text, lang, 0); }
+    catch (e) { playTtsAudio(text, lang); }
+  }
+  /* 用 Web Speech API 朗读；移动端（iOS Safari / Android Chrome）常有「调用了却不发声」的
+     静默失败，故采用：① 每次重试新建 utterance ② 看门狗检测未 onstart 则重试 ③ 多次失败
+     自动降级到在线 TTS 兜底，保证手机/Pad 一定能出声。 */
+  function playWebSpeech(text, lang, attempt) {
+    const MAX = 2;
+    try { window.speechSynthesis.cancel(); } catch (e) {}
+    const u = new SpeechSynthesisUtterance(String(text));
+    u.lang = lang; u.rate = 0.85; u.pitch = 1.05; u.volume = 1;
+    const v = pickVoice(); if (v) u.voice = v;            // 指定英文语音，避免读成中文腔
+    let started = false, ended = false;
+    const wd = setTimeout(function () {
+      if (started || ended) return;                       // 已正常发声，无需处理
+      if (attempt < MAX) { try { playWebSpeech(text, lang, attempt + 1); } catch (e) { playTtsAudio(text, lang); } }
+      else { playTtsAudio(text, lang); }                  // 彻底失败 → 在线 TTS 兜底
+    }, 700);
+    u.onstart = function () { started = true; clearTimeout(wd); };
+    u.onend = function () { ended = true; clearTimeout(wd); };
+    u.onerror = function () {
+      ended = true; clearTimeout(wd);
+      if (attempt < MAX) { try { playWebSpeech(text, lang, attempt + 1); } catch (e) { playTtsAudio(text, lang); } }
+      else { playTtsAudio(text, lang); }
+    };
+    try { window.speechSynthesis.speak(u); }
+    catch (e) { playTtsAudio(text, lang); }
   }
   if ('speechSynthesis' in window) {
     loadVoices();
