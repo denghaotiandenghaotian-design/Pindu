@@ -1825,11 +1825,13 @@
       host.appendChild(box);
       $('#cStart').onclick = () => runChallenge($('#cHost'));
     }
+    // 单音关：TTS 无法读 IPA 符号，改用「示范词」发声（如 ă→apple），保证每关都能听到标准音
+    const PHONEME_DEMO = { 'ă':'apple','ĕ':'egg','ĭ':'igloo','ŏ':'octopus','ŭ':'umbrella','ā':'ace','ē':'eat','ī':'ice','ō':'open','th':'three','sh':'sheep','ch':'chair','r':'red','l':'leaf','v':'van','w':'web' };
     function runChallenge(host) {
       const stages = [
-        { name: '第1关 · 单音', items: (KB.pronChallenges.phonemes || []).map(s => ({ text: s, isPhoneme: true })) },
-        { name: '第2关 · 单词', items: (KB.pronChallenges.words || []).map(w => ({ text: w })) },
-        { name: '第3关 · 句子', items: (KB.pronChallenges.sentences || []).map(s => ({ text: s })) }
+        { name: '第1关 · 单音', items: (KB.pronChallenges.phonemes || []).map(s => ({ display: s, text: PHONEME_DEMO[s] || s, isPhoneme: true })) },
+        { name: '第2关 · 单词', items: (KB.pronChallenges.words || []).map(w => ({ display: w, text: w })) },
+        { name: '第3关 · 句子', items: (KB.pronChallenges.sentences || []).map(s => ({ display: s, text: s })) }
       ];
       let si = 0, ii = 0, stars = 0, total = 0;
       const wrap = el('div', 'quiz-wrap'); host.innerHTML = ''; host.appendChild(wrap);
@@ -1838,18 +1840,30 @@
         const st = stages[si]; const it = st.items[ii];
         const card = el('div', 'q-card center');
         card.innerHTML = `<div class="qno" style="font-weight:900;color:var(--c-primary)">${esc(st.name)} · 第 ${ii + 1}/${st.items.length} 项</div>
-          <div class="q-word">${esc(it.text)}</div>
+          <div class="q-word">${esc(it.display)}</div>
           <button class="q-audio-btn" id="cPlay">🔊</button>
-          <div class="q-prompt">听标准音，大声跟读这一${it.isPhoneme ? '个音' : (si === 2 ? '句话' : '个词')}！</div>
+          <div class="q-prompt">${it.isPhoneme ? '这是 <b>' + esc(it.display) + '</b> 的音，听示范词「' + esc(it.text) + '」跟读～' : '听标准音，大声跟读这一' + (si === 2 ? '句话' : '个词') + '！'}</div>
           <div class="row" style="justify-content:center;gap:8px;flex-wrap:wrap">
-            <button class="btn accent" id="cMic">🎤 麦克风跟读</button>
+            <button class="btn accent" id="cMic">🎤 录下我的跟读</button>
+            ${micSupported() ? '<button class="btn soft sm" id="cStt">🤖 自动辨音（需联网）</button>' : ''}
             <button class="btn mint sm" data-s="92">🌟 准确</button>
             <button class="btn soft sm" data-s="80">⚠️ 基本</button>
             <button class="btn pink sm" data-s="55">🔴 纠音</button>
           </div>
+          <div id="cRecPanel" style="display:none;margin-top:8px">
+            <div class="rec-indicator" id="cRecDot"><span class="rec-dot"></span> 录音中…（读完点「停止并试听」）</div>
+            <div class="vol-bar"><div class="vol-fill" id="cVol"></div></div>
+            <button class="btn soft sm" id="cStop">⏹ 停止并试听</button>
+          </div>
+          <div id="cPlayPanel" style="display:none;margin-top:10px">
+            <div class="muted" style="margin-bottom:4px">👂 这是你刚才读的：</div>
+            <audio id="cMine" controls style="width:100%"></audio>
+            <button class="btn soft sm" id="cStd" style="margin-top:6px">🔊 再听标准音</button>
+          </div>
           <div class="q-feedback" id="cRes" style="display:none"></div>`;
         wrap.appendChild(card);
-        $('#cPlay').onclick = () => speak(it.text);
+        unlockAudio();
+        $('#cPlay').onclick = () => { unlockAudio(); speak(it.text); };
         setTimeout(() => speak(it.text), 200);
         function gain(score) {
           total++; if (score >= 70) stars++;
@@ -1862,9 +1876,40 @@
           res.appendChild(nb);
         }
         $('#cMic').onclick = () => {
-          if (!micSupported()) { toast('本浏览器不支持麦克风，点自评按钮'); return; }
-          $('#cMic').textContent = '🎙️ 聆听…'; $('#cMic').disabled = true;
-          recognize((txt, stt) => { $('#cMic').textContent = '🎤 麦克风跟读'; $('#cMic').disabled = false; if (stt === 'ok' && txt) gain(scoreFromText(it.text, txt)); else toast('没听清，用自评按钮'); });
+          if (!micCaptureSupported()) { toast('当前环境不支持麦克风录音（请用 Chrome / Edge，并通过 https 分享链接打开）；也可直接点自评按钮打分'); return; }
+          $('#cMic').style.display = 'none';
+          $('#cRecPanel').style.display = 'block';
+          $('#cVol').style.width = '0%';
+          recordUser({
+            duration: 4000,
+            onLevel: v => { const f = $('#cVol'); if (f) f.style.width = Math.round(v * 100) + '%'; },
+            onDone: url => {
+              $('#cRecPanel').style.display = 'none';
+              if (url) {
+                $('#cMine').src = url;
+                $('#cPlayPanel').style.display = 'block';
+                toast('录好啦！对比标准音，给自己打个分吧～');
+              } else { $('#cMic').style.display = ''; toast('录音结束'); }
+            },
+            onErr: msg => {
+              $('#cRecPanel').style.display = 'none';
+              $('#cMic').style.display = '';
+              if (msg === 'insecure') toast('麦克风需在 https 安全链接下使用，请用分享链接打开而非本地文件');
+              else if (msg === 'denied') toast('麦克风权限被拒绝，请在地址栏允许麦克风后重试');
+              else toast('录音启动失败，请用下方自评打分');
+            }
+          });
+        };
+        $('#cStop').onclick = () => { if (recordUser._stop) recordUser._stop(); };
+        $('#cStd').onclick = () => speak(it.text);
+        const cstt = $('#cStt');
+        if (cstt) cstt.onclick = () => {
+          cstt.disabled = true; cstt.textContent = '🤖 辨音中…';
+          recognize((txt, stt) => {
+            cstt.disabled = false; cstt.textContent = '🤖 自动辨音（需联网）';
+            if (stt === 'ok' && txt) { gain(scoreFromText(it.text, txt)); toast('电脑识别到：' + txt); }
+            else toast('自动辨音不可用（网络/浏览器限制），请自评');
+          });
         };
         wrap.querySelectorAll('.q-card .btn[data-s]').forEach(b => b.onclick = () => gain(parseInt(b.dataset.s)));
       }
