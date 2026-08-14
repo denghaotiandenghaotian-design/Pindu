@@ -134,9 +134,9 @@
   function ttsUrlYoudao(t) { return 'https://dict.youdao.com/dictvoice?audio=' + encodeURIComponent(t) + '&type=1'; }
   let _ttsToken = 0;
   /* —— 本地音频优先（仓库 audio/ 目录、同源加载，格式兼容性最好且不受跨域/外网限制）——
-   * 命中 manifest 的单词优先播本地 mp3（路径 'audio/<file>'），加载失败自动回退在线 TTS。
-   * 当前 manifest 为空（=全部走在线 TTS）；将来批量生成 mp3 后按 {'apple':'apple.mp3',...} 追加即可启用。 */
-  var LOCAL_AUDIO = {};
+   * 命中 manifest 的词优先播本地 mp3（路径 'audio/<file>'），加载失败自动回退在线 TTS。
+   * manifest 由 data_audio.js 提供（window.LOCAL_AUDIO，gen_audio.js 批量生成）。 */
+  var LOCAL_AUDIO = (typeof window !== 'undefined' && window.LOCAL_AUDIO) || {};
   function resolveAudioUrl(t) {
     var f = LOCAL_AUDIO[String(t).trim().toLowerCase()];
     return f ? 'audio/' + f : null;
