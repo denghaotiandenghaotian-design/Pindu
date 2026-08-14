@@ -143,20 +143,28 @@
       const a = _ttsAudio;
       const urls = seg.zh ? [ttsUrlBaidu(seg.t, 'zh')] : [ttsUrlBaidu(seg.t, 'en'), ttsUrlYoudao(seg.t)];
       let i = 0;
-      const attempt = () => {
-        if (i >= urls.length) {                     // 所有源都失败 → 播下一句；若已是最后一句则提示
+      const playOne = () => {
+        a.onplaying = a.onended = a.onerror = a.onstalled = null;
+        if (i >= urls.length) {                     // 所有源都加载失败 → 播下一句；若已是最后一句则提示
           if (!_ttsQueue.length) { try { toast('当前网络环境下未能播放发音，请检查网络后重试'); } catch (e) {} }
           ttsPlayNext(); return;
         }
-        a.onerror = () => { i++; attempt(); };
+        let playing = false;
+        a.onplaying = () => { playing = true; };
         a.onended = () => { ttsPlayNext(); };
+        // 仅「资源真的加载失败(onerror)」才跳下一源；iOS / 微信常出现 play() 先 reject、随后实际播放，
+        // 故忽略 play 的 reject，改以 onplaying / onended 判定，避免被误判为「网络失败」。
+        a.onerror = () => { if (playing) return; i++; playOne(); };
+        a.onstalled = () => { if (playing) return; };
         a.src = urls[i++];
-        try {
-          const p = a.play();
-          if (p && p.catch) p.catch(() => { i++; attempt(); });
-        } catch (e) { i++; attempt(); }
+        const doPlay = () => { try { const p = a.play(); if (p && p.catch) p.catch(function () {}); } catch (e) {} };
+        // 微信要求 WeixinJSBridgeReady 之后才能播放远程音频；未就绪则等待，避免 play 被拒。
+        if (isWeChat() && typeof WeixinJSBridge === 'undefined') {
+          document.addEventListener('WeixinJSBridgeReady', doPlay, false);
+          setTimeout(doPlay, 1500);                 // 兜底：部分微信版本已就绪但未触发该事件
+        } else { doPlay(); }
       };
-      attempt();
+      playOne();
     } catch (e) { ttsPlayNext(); }
   }
   function playTtsAudio(text, lang) {
@@ -175,11 +183,12 @@
     lang = lang || 'en-US';
     if (!text) return;
     unlockAudio();                                       // 每次发声前都确保音频上下文已唤醒（移动端关键）
-    // 微信 / 触摸设备（手机·Pad）/ 无 Web Speech API → 直接在用户手势内同步走在线 TTS，
-    // 避免 700ms 看门狗触发时已过手势、被自动播放策略拦截导致「静默失败 / 误报网络」。
-    if (isWeChat() || isTouchDevice() || !('speechSynthesis' in window)) { playTtsAudio(text, lang); return; }
-    try { playWebSpeech(text, lang, 0); }
-    catch (e) { playTtsAudio(text, lang); }
+    // 微信内置浏览器阉割了 speechSynthesis → 只能走在线 TTS（已做 JSBridge 等待 + iOS play 兼容）。
+    if (isWeChat()) { playTtsAudio(text, lang); return; }
+    // 普通浏览器（含手机 / Pad 的 Safari、Chrome）→ 优先系统原生 TTS：离线可用、最稳，
+    // 仅当原生也静默失败时才降级到在线 TTS。
+    if ('speechSynthesis' in window) { try { playWebSpeech(text, lang, 0); return; } catch (e) {} }
+    playTtsAudio(text, lang);
   }
   /* 用 Web Speech API 朗读；移动端（iOS Safari / Android Chrome）常有「调用了却不发声」的
      静默失败，故采用：① 每次重试新建 utterance ② 看门狗检测未 onstart 则重试 ③ 多次失败
