@@ -121,38 +121,45 @@
     }
     return _voices.find(x => (x.lang || '').startsWith('en')) || null;
   }
-  /* —— 微信内置浏览器检测 —— */
+  /* —— 微信内置浏览器 / 触摸设备（手机·平板）检测 —— */
   function isWeChat() { return /MicroMessenger/i.test(navigator.userAgent || ''); }
+  function isTouchDevice() {
+    return ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) ||
+      /Android|iPhone|iPad|iPod|Windows Phone|webOS|BlackBerry|IEMobile|Opera Mini|Tablet/i.test(navigator.userAgent || '');
+  }
 
   /* —— 在线 TTS 音频兜底引擎（微信 / 无 speechSynthesis 时使用） —— */
   let _ttsAudio = null, _ttsQueue = [], _ttsPlaying = false;
   function ttsUrlBaidu(t, lan) { return 'https://fanyi.baidu.com/gettts?lan=' + lan + '&text=' + encodeURIComponent(t) + '&spd=3&source=web'; }
   function ttsUrlYoudao(t) { return 'https://dict.youdao.com/dictvoice?audio=' + encodeURIComponent(t) + '&type=1'; }
+  let _ttsToken = 0;
   function ttsPlayNext() {
     if (!_ttsQueue.length) { _ttsPlaying = false; return; }
     _ttsPlaying = true;
     const seg = _ttsQueue.shift();
+    const token = ++_ttsToken;
     try {
       if (!_ttsAudio) { _ttsAudio = new Audio(); _ttsAudio.preload = 'auto'; }
       const a = _ttsAudio;
-      const urls = seg.zh ? [ttsUrlBaidu(seg.t, 'zh')] : [ttsUrlBaidu(seg.t, 'en'), ttsUrlYoudao(seg.t)];
-      let i = 0;
+      const urls = seg.zh ? [ttsUrlBaidu(seg.t, 'zh'), ttsUrlYoudao(seg.t)] : [ttsUrlBaidu(seg.t, 'en'), ttsUrlYoudao(seg.t)];
+      let i = 0, done = false;
       const attempt = () => {
+        if (done || token !== _ttsToken) return;          // 已被新一次播放作废
         if (i >= urls.length) { ttsPlayNext(); return; }   // 所有源都失败 → 播下一句
-        a.onerror = () => { i++; attempt(); };
-        a.onended = () => { ttsPlayNext(); };
+        a.onerror = null; a.onended = null; a.onplaying = null;
+        a.onplaying = () => { done = true; };              // 真正在播即标记成功（忽略 play() 的 reject）
+        a.onerror = () => { if (done || token !== _ttsToken) return; i++; attempt(); };  // 仅资源真加载失败才换源
+        a.onended = () => { if (token === _ttsToken) ttsPlayNext(); };
         a.src = urls[i++];
-        try {
-          const p = a.play();
-          if (p && p.catch) p.catch(() => { i++; attempt(); });
-        } catch (e) { i++; attempt(); }
+        try { const p = a.play(); if (p && p.catch) p.catch(() => {}); } catch (e) { if (!done) { i++; attempt(); } }
       };
       attempt();
     } catch (e) { ttsPlayNext(); }
   }
   function playTtsAudio(text, lang) {
     try {
-      if (_ttsPlaying && _ttsAudio) { try { _ttsAudio.pause(); } catch (e) {} }  // 打断上一条
+      _ttsToken++;                                         // 作废上一段未播完的队列
+      if (_ttsAudio) { try { _ttsAudio.pause(); } catch (e) {} }
       _ttsQueue = [];
       const zh = (lang || 'en-US').indexOf('zh') === 0;
       // 长文本按句拆开逐句播放（百度 gettts 单句支持更稳）；无标点则整段播放
@@ -160,26 +167,53 @@
       _ttsQueue = parts.map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean).map(t => ({ t: t, zh: zh }));
       _ttsPlaying = false;
       ttsPlayNext();
-    } catch (e) { toast('当前环境无法播放发音'); }
+    } catch (e) { try { toast('当前环境无法播放发音'); } catch (e2) {} }
+  }
+  /* —— 桌面端原生离线 TTS：带看门狗防静默失败，但绝不在发声时打断 —— */
+  function playWebSpeech(text, lang, attempt) {
+    const MAX = 2;
+    try { window.speechSynthesis.cancel(); } catch (e) {}
+    const u = new SpeechSynthesisUtterance(String(text));
+    u.lang = lang; u.rate = 0.85; u.pitch = 1.05; u.volume = 1;
+    const v = pickVoice(); if (v) u.voice = v;            // 指定英文语音，避免读成中文腔
+    let didPlay = false;
+    const wd = setTimeout(function () {
+      if (didPlay) return;
+      const active = window.speechSynthesis.speaking || window.speechSynthesis.pending;
+      if (active) { didPlay = true; return; }             // 正在播（Chrome 偶不发 onstart）→ 绝不打断
+      if (attempt < MAX) { try { playWebSpeech(text, lang, attempt + 1); } catch (e) { playTtsAudio(text, lang); } }
+      else { playTtsAudio(text, lang); }                 // 两次都静默失败 → 在线 TTS 兜底
+    }, 700);
+    u.onstart = function () { didPlay = true; clearTimeout(wd); };
+    u.onboundary = function () { didPlay = true; };       // 读到任意一个字符即视为已发声
+    u.onend = function () { didPlay = true; clearTimeout(wd); };
+    u.onerror = function () {
+      if (didPlay) return;                               // 已在播，忽略末尾错误
+      clearTimeout(wd);
+      if (attempt < MAX) { try { playWebSpeech(text, lang, attempt + 1); } catch (e) { playTtsAudio(text, lang); } }
+      else { playTtsAudio(text, lang); }
+    };
+    try { window.speechSynthesis.speak(u); } catch (e) { playTtsAudio(text, lang); }
   }
   function speak(text, lang) {
     lang = lang || 'en-US';
     if (!text) return;
-    // 微信内置浏览器 / 无 Web Speech API → 用在线 TTS 音频兜底
-    if (isWeChat() || !('speechSynthesis' in window)) { playTtsAudio(text, lang); return; }
-    try {
-      window.speechSynthesis.cancel();                 // 先清空队列，避免连点堆叠
-      const u = new SpeechSynthesisUtterance(String(text));
-      u.lang = lang; u.rate = 0.85; u.pitch = 1.05; u.volume = 1;
-      const v = pickVoice(); if (v) u.voice = v;        // 指定英文语音，避免读成中文腔
-      window.speechSynthesis.speak(u);
-      // iOS/Safari 已知 bug：首句偶尔被立刻截断而不发声 → 320ms 后若仍未在播则补播一次
-      const retry = setTimeout(function () {
-        try { if (!window.speechSynthesis.speaking) window.speechSynthesis.speak(u); } catch (e) {}
-      }, 320);
-      u.onend = function () { clearTimeout(retry); };
-      u.onerror = function () { clearTimeout(retry); };
-    } catch (e) { playTtsAudio(text, lang); }
+    unlockAudio();                                       // 每次发声前唤醒音频上下文（移动端关键）
+    // 微信 / 手机·平板（触摸设备）/ 无 Web Speech API → 直接在用户手势内走在线 TTS，移动端最稳
+    if (isWeChat() || isTouchDevice() || !('speechSynthesis' in window)) {
+      // 微信内置浏览器：等待 JSBridge 就绪后再播，避免首次被自动播放策略拦截
+      if (isWeChat() && typeof WeixinJSBridge === 'undefined') {
+        document.addEventListener('WeixinJSBridgeReady', function () { playTtsAudio(text, lang); }, false);
+        // 兜底：若 600ms 内桥仍未就绪（极少），直接尝试播放（点击手势内通常仍被放行）
+        setTimeout(function () { if (typeof WeixinJSBridge === 'undefined') playTtsAudio(text, lang); }, 600);
+        return;
+      }
+      playTtsAudio(text, lang);
+      return;
+    }
+    // 桌面端：原生离线 TTS（最清晰、不依赖网络），失败再兜底在线 TTS
+    try { playWebSpeech(text, lang, 0); }
+    catch (e) { playTtsAudio(text, lang); }
   }
   if ('speechSynthesis' in window) {
     loadVoices();
@@ -464,7 +498,7 @@
     if (q.type === 'listen' || q.type === 'read') {
       const ab = el('button', 'q-audio-btn'); ab.textContent = '🔊'; ab.onclick = () => speak(q.spoken); card.appendChild(ab);
       if (q.type === 'read') { const ww = el('div', 'q-word'); ww.textContent = q.word; card.appendChild(ww); }
-      setTimeout(() => speak(q.spoken), 250);
+      if (!isTouchDevice()) setTimeout(() => speak(q.spoken), 250);
     }
     const pr = el('div', 'q-prompt'); pr.textContent = q.prompt; card.appendChild(pr);
     const opts = el('div', 'q-options');
@@ -1661,7 +1695,7 @@
           </div>`;
         wrap.appendChild(card);
         $('#aPlay').onclick = () => speak(item.w);
-        setTimeout(() => speak(item.w), 200);
+        if (!isTouchDevice()) setTimeout(() => speak(item.w), 200);
         const res = $('#aRes');
         function showScore(score, mode, heard) {
           const g = pronGrade(score);
@@ -1850,7 +1884,7 @@
           <div class="q-feedback" id="cRes" style="display:none"></div>`;
         wrap.appendChild(card);
         $('#cPlay').onclick = () => speak(it.text);
-        setTimeout(() => speak(it.text), 200);
+        if (!isTouchDevice()) setTimeout(() => speak(it.text), 200);
         function gain(score) {
           total++; if (score >= 70) stars++;
           const g = pronGrade(score);
