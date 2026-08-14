@@ -216,9 +216,12 @@
     };
     try { window.speechSynthesis.speak(u); } catch (e) { playTtsAudio(text, lang); }
   }
+  /* 音素符号 → 示范词映射（发音闯关"单音"关：TTS 无法朗读 ă/th/oo 等符号，读对应示范词） */
+  var PHONEME_DEMO = { 'ă':'apple','ĕ':'egg','ĭ':'igloo','ŏ':'octopus','ŭ':'umbrella','ā':'cake','ē':'bee','ī':'bike','ō':'home','ū':'cube','th':'three','sh':'sheep','ch':'chair','ng':'ring','oo':'moon','ar':'car','or':'corn','er':'her','ir':'bird','ur':'turn','ai':'rain','ay':'day','ee':'tree','ea':'tea','oa':'boat','ow':'cow','ou':'mouse','oi':'coin','oy':'boy','au':'autumn','aw':'draw','ph':'phone','wh':'white','qu':'queen' };
   function speak(text, lang) {
     lang = lang || 'en-US';
     if (!text) return;
+    text = PHONEME_DEMO[String(text).trim()] || text;    // 音素符号读示范词（本地 mp3 直接命中）
     unlockAudio();                                       // 每次发声前唤醒音频上下文（移动端关键）
     // 微信 / 手机·平板（触摸设备）/ 无 Web Speech API → 直接在用户手势内走在线 TTS，移动端最稳。
     // 注意：不做 JSBridge 等待——等待会脱离点击手势，反而被自动播放策略拦截；手势内直接 play 最可靠。
