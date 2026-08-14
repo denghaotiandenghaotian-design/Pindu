@@ -198,22 +198,28 @@
     try { window.speechSynthesis.cancel(); } catch (e) {}
     const u = new SpeechSynthesisUtterance(String(text));
     u.lang = lang; u.rate = 0.85; u.pitch = 1.05; u.volume = 1;
-    const v = pickVoice(); if (v) u.voice = v;            // 指定英文语音，避免读成中文腔
-    let started = false, ended = false;
-    const wd = setTimeout(function () {
-      if (started || ended) return;                       // 已正常发声，无需处理
-      if (attempt < MAX) { try { playWebSpeech(text, lang, attempt + 1); } catch (e) { playTtsAudio(text, lang); } }
-      else { playTtsAudio(text, lang); }                  // 彻底失败 → 在线 TTS 兜底
-    }, 700);
-    u.onstart = function () { started = true; clearTimeout(wd); };
-    u.onend = function () { ended = true; clearTimeout(wd); };
+    const v = pickVoice(); if (v) { u.voice = v; }          // 指定英文语音，避免读成中文腔
+    let didPlay = false, done = false;
+    u.onstart = function () { didPlay = true; };
+    u.onboundary = function () { didPlay = true; };          // Chrome 偶尔不触发 onstart，以 onboundary 兜底
+    u.onend = function () { done = true; };
     u.onerror = function () {
-      ended = true; clearTimeout(wd);
+      if (done) return;
       if (attempt < MAX) { try { playWebSpeech(text, lang, attempt + 1); } catch (e) { playTtsAudio(text, lang); } }
       else { playTtsAudio(text, lang); }
     };
     try { window.speechSynthesis.speak(u); }
-    catch (e) { playTtsAudio(text, lang); }
+    catch (e) { playTtsAudio(text, lang); return; }
+    // 看门狗：仅当「确实完全没开始播放」才重试。以 speaking / pending / didPlay 综合判定，
+    // 避免把「正在播放但 onstart 未触发」误判为静默失败而 cancel 打断——这正是桌面/Chrome 无声的根因。
+    setTimeout(function () {
+      if (done) return;
+      let active = false;
+      try { active = window.speechSynthesis.speaking || window.speechSynthesis.pending; } catch (e) {}
+      if (didPlay || active) return;                         // 已发声或正在播 → 正常，不重试
+      if (attempt < MAX) { try { playWebSpeech(text, lang, attempt + 1); } catch (e) { playTtsAudio(text, lang); } }
+      else { playTtsAudio(text, lang); }
+    }, 900);
   }
   if ('speechSynthesis' in window) {
     loadVoices();
