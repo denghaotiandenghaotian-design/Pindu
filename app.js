@@ -133,15 +133,32 @@
   function ttsUrlBaidu(t, lan) { return 'https://fanyi.baidu.com/gettts?lan=' + lan + '&text=' + encodeURIComponent(t) + '&spd=3&source=web'; }
   function ttsUrlYoudao(t) { return 'https://dict.youdao.com/dictvoice?audio=' + encodeURIComponent(t) + '&type=1'; }
   let _ttsToken = 0;
+  /* —— 本地音频优先（仓库 audio/ 目录、同源加载，格式兼容性最好且不受跨域/外网限制）——
+   * 命中 manifest 的单词优先播本地 mp3（路径 'audio/<file>'），加载失败自动回退在线 TTS。
+   * 当前 manifest 为空（=全部走在线 TTS）；将来批量生成 mp3 后按 {'apple':'apple.mp3',...} 追加即可启用。 */
+  var LOCAL_AUDIO = {};
+  function resolveAudioUrl(t) {
+    var f = LOCAL_AUDIO[String(t).trim().toLowerCase()];
+    return f ? 'audio/' + f : null;
+  }
   function ttsPlayNext() {
     if (!_ttsQueue.length) { _ttsPlaying = false; return; }
     _ttsPlaying = true;
     const seg = _ttsQueue.shift();
     const token = ++_ttsToken;
     try {
-      if (!_ttsAudio) { _ttsAudio = new Audio(); _ttsAudio.preload = 'auto'; }
+      if (!_ttsAudio) {
+        _ttsAudio = new Audio();
+        _ttsAudio.preload = 'auto';
+        _ttsAudio.volume = 1;
+        _ttsAudio.setAttribute('playsinline', '');          // iOS：内联播放，避免全屏/静音
+        _ttsAudio.setAttribute('webkit-playsinline', '');
+      }
       const a = _ttsAudio;
-      const urls = seg.zh ? [ttsUrlBaidu(seg.t, 'zh'), ttsUrlYoudao(seg.t)] : [ttsUrlBaidu(seg.t, 'en'), ttsUrlYoudao(seg.t)];
+      const urls = [];
+      if (seg.local) urls.push(seg.local);                  // 同源本地 mp3 优先
+      if (seg.zh) { urls.push(ttsUrlBaidu(seg.t, 'zh'), ttsUrlYoudao(seg.t)); }
+      else { urls.push(ttsUrlBaidu(seg.t, 'en'), ttsUrlYoudao(seg.t)); }
       let i = 0, done = false;
       const attempt = () => {
         if (done || token !== _ttsToken) return;          // 已被新一次播放作废
@@ -164,7 +181,11 @@
       const zh = (lang || 'en-US').indexOf('zh') === 0;
       // 长文本按句拆开逐句播放（百度 gettts 单句支持更稳）；无标点则整段播放
       const parts = String(text).match(/[^.!?。！？]+[.!?。！？]*/g) || [String(text)];
-      _ttsQueue = parts.map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean).map(t => ({ t: t, zh: zh }));
+      _ttsQueue = parts.map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean).map(t => {
+        const q = { t: t, zh: zh };
+        if (!zh) { const lu = resolveAudioUrl(t); if (lu) q.local = lu; }   // 纯英文单词可优先本地 mp3
+        return q;
+      });
       _ttsPlaying = false;
       ttsPlayNext();
     } catch (e) { try { toast('当前环境无法播放发音'); } catch (e2) {} }
@@ -199,15 +220,9 @@
     lang = lang || 'en-US';
     if (!text) return;
     unlockAudio();                                       // 每次发声前唤醒音频上下文（移动端关键）
-    // 微信 / 手机·平板（触摸设备）/ 无 Web Speech API → 直接在用户手势内走在线 TTS，移动端最稳
+    // 微信 / 手机·平板（触摸设备）/ 无 Web Speech API → 直接在用户手势内走在线 TTS，移动端最稳。
+    // 注意：不做 JSBridge 等待——等待会脱离点击手势，反而被自动播放策略拦截；手势内直接 play 最可靠。
     if (isWeChat() || isTouchDevice() || !('speechSynthesis' in window)) {
-      // 微信内置浏览器：等待 JSBridge 就绪后再播，避免首次被自动播放策略拦截
-      if (isWeChat() && typeof WeixinJSBridge === 'undefined') {
-        document.addEventListener('WeixinJSBridgeReady', function () { playTtsAudio(text, lang); }, false);
-        // 兜底：若 600ms 内桥仍未就绪（极少），直接尝试播放（点击手势内通常仍被放行）
-        setTimeout(function () { if (typeof WeixinJSBridge === 'undefined') playTtsAudio(text, lang); }, 600);
-        return;
-      }
       playTtsAudio(text, lang);
       return;
     }
@@ -230,6 +245,10 @@
     if (!_actx) { try { _actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { _actx = null; } }
     return _actx;
   }
+  /* 静音 WAV（data URI，44B 头 + 0.2s 8kHz 8bit 静音）：在用户手势内播放任意音频可解锁
+   * iOS Safari / Android Chrome 的媒体播放栈（autoplay 策略按"首次手势内播放过音频"放行后续）。 */
+  var MUTE_WAV = 'data:audio/wav;base64,UklGRmQGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YUAGAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
+  var _unlockAudioEl = null;
   function unlockAudio() {
     if (_audioUnlocked) return;
     _audioUnlocked = true;
@@ -241,6 +260,19 @@
         const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination); src.start(0);
       } catch (e) {}
     }
+    // 在首个手势内播放一次静音音频 → 双保险解锁媒体栈（部分 Android WebView / 微信对 AudioContext 不敏感）
+    try {
+      if (!_unlockAudioEl) {
+        _unlockAudioEl = new Audio();
+        _unlockAudioEl.setAttribute('playsinline', '');
+        _unlockAudioEl.setAttribute('webkit-playsinline', '');
+        _unlockAudioEl.volume = 1;
+        _unlockAudioEl.preload = 'auto';
+      }
+      _unlockAudioEl.src = MUTE_WAV;
+      const p = _unlockAudioEl.play();
+      if (p && p.catch) p.catch(function () {});
+    } catch (e) {}
     if ('speechSynthesis' in window) { try { window.speechSynthesis.cancel(); } catch (e) {} }  // 预热 TTS
     hideAudioHint();
   }
